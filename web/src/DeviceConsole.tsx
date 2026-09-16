@@ -31,8 +31,9 @@ import { Badge, Button, controlClass, cx, IconButton } from "./ui"
  *
  *  1. 画面被裁。弹窗里给画面套了个 `max-h-[60vh] + overflow-hidden` 的盒子,
  *     竖屏(720×1280)缩到那么宽之后高度远超盒子,于是下半个屏幕被切掉。
- *     现在画面按比例缩放到完全放得下(`max-h-full max-w-full`,canvas 是
- *     替换元素,浏览器会保住宽高比)。
+ *     现在画面按比例缩放到刚好放得下,而且缩和放都做(见下面 effect 里的
+ *     fit())—— 光靠 `max-h-full max-w-full` 只会往下缩,容器变大之后画面
+ *     不动,全屏时反而显得更小。
  *  2. 点击位置对不上。坐标是按**外层盒子**的矩形算的,而盒子比画面小 ——
  *     差一个缩放系数,越往边上越离谱。现在一律量 canvas 自己的矩形。
  *
@@ -172,12 +173,50 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       return
     }
 
-    // max-h/max-w + w-auto/h-auto:按比例缩放到完全放得下,绝不裁切。
+    // max-h/max-w 只当兜底(第一帧还没量出容器尺寸之前别让它溢出),
+    // 真正的大小由下面的 fit() 定。
     canvas.className = "max-h-full max-w-full touch-none select-none outline-none"
     canvas.tabIndex = 0
     host.replaceChildren(canvas)
     setScreenSize(screen.size)
-    const unsubscribe = screen.onSizeChanged(setScreenSize)
+
+    /**
+     * 按画面比例缩放到刚好放进 stage —— 这里"缩"和"放"都要做。
+     *
+     * 之前只给 canvas 挂了 max-h-full/max-w-full,那条路只会**往下**缩:
+     * 容器比画面小的时候贴合得很好,可容器一旦变大(进全屏、把窗口拉大),
+     * canvas 就停在解码器给的原始像素数上不动了,多出来的空间全是黑的 ——
+     * 屏幕越大反而显得画面越小。所以尺寸自己算:短边贴合,宽高比不变。
+     *
+     * 尺寸写在 canvas 自己的 CSS 上(而不是外面再套一层),点击坐标才能继续
+     * 直接按 canvas 的矩形换算(见下面的 pointOf)。
+     */
+    const fit = () => {
+      const { width, height } = screen.size
+      if (width === 0 || height === 0) return
+      const style = window.getComputedStyle(host)
+      const padding = (value: string) => Number.parseFloat(value) || 0
+      // clientWidth/Height 含 padding,减掉之后才是画面真正能用的地方。
+      const boxWidth =
+        host.clientWidth - padding(style.paddingLeft) - padding(style.paddingRight)
+      const boxHeight =
+        host.clientHeight - padding(style.paddingTop) - padding(style.paddingBottom)
+      if (boxWidth <= 0 || boxHeight <= 0) return
+      const scale = Math.min(boxWidth / width, boxHeight / height)
+      canvas.style.width = `${width * scale}px`
+      canvas.style.height = `${height * scale}px`
+    }
+
+    fit()
+    // 容器大小变了就重算:窗口缩放、进出浏览器全屏、命令面板收放都会走到这。
+    // 画面尺寸不反过来影响 stage(它是 flex 撑出来的固定大小),不会转圈。
+    const observer = new ResizeObserver(fit)
+    observer.observe(host)
+    // 旋转、改分辨率之后宽高比也换了,得跟着重量一次。
+    const unsubscribe = screen.onSizeChanged((size) => {
+      setScreenSize(size)
+      fit()
+    })
 
     const pointOf = (
       event: PointerEvent | WheelEvent
@@ -256,6 +295,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
 
     return () => {
       unsubscribe()
+      observer.disconnect()
       canvas.removeEventListener("pointerdown", onPointerDown)
       canvas.removeEventListener("pointermove", onPointerMove)
       canvas.removeEventListener("pointerup", finishPointer)
