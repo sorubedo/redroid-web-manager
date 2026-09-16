@@ -37,6 +37,9 @@ const DEFAULT_MAX_SIZE = 1280
 /** 码率,单位是比特每秒(scrcpy 的参数表就是这个单位)。 */
 const VIDEO_BIT_RATE = 4_000_000
 
+/** 等设备回剪贴板 ack 的上限。不回也不能把调用方挂住。 */
+const CLIPBOARD_ACK_TIMEOUT = 1500
+
 export interface ScreenSize {
   readonly width: number
   readonly height: number
@@ -68,6 +71,9 @@ export const startScrcpySession = async (adb: Adb) => {
     video: true,
     audio: true,
     control: true,
+    // 设备复制的内容会自动顺着控制通道推过来(ScrcpyScreen.onClipboard)。
+    // 默认就是 true,写出来是因为剪贴板同步靠它,别顺手关掉。
+    clipboardAutosync: true,
     // 4.1 把编码格式做成了必填项(以前有默认值)。
     videoCodec: "h264",
     maxSize: DEFAULT_MAX_SIZE,
@@ -131,6 +137,13 @@ export class ScrcpyScreen {
   readonly #renderer: CanvasVideoFrameRenderer
   readonly #sound: ScrcpySound | null
 
+  /** 设备端最近一次复制的内容;新订阅者补一条,免得订阅前那一下丢了。 */
+  #deviceClipboard: string | null = null
+  /** 已知的、两边一致的内容。设备回推同一条时不当成"设备复制了"。 */
+  #lastClipboard: string | null = null
+  #clipboardSequence = 1n
+  readonly #clipboardListeners = new Set<(text: string) => void>()
+
   #closed = false
 
   private constructor(
@@ -143,6 +156,7 @@ export class ScrcpyScreen {
     this.#decoder = decoder
     this.#renderer = renderer
     this.#sound = sound
+    void this.#readClipboard(client)
   }
 
   get canvas(): HTMLCanvasElement | OffscreenCanvas {
@@ -264,12 +278,89 @@ export class ScrcpyScreen {
     void controller.injectText(text)
   }
 
+  /**
+   * 设备复制了东西。
+   *
+   * 这是 scrcpy 的剪贴板自动同步(clipboardAutosync,默认开着):设备端
+   * 每次复制都会顺着控制通道推一条过来。返回一个取消订阅的函数。
+   */
+  onClipboard(listener: (text: string) => void): () => void {
+    this.#clipboardListeners.add(listener)
+    if (this.#deviceClipboard !== null) listener(this.#deviceClipboard)
+    return () => {
+      this.#clipboardListeners.delete(listener)
+    }
+  }
+
+  /**
+   * 把一段文字放进设备的剪贴板,可选顺手触发一次粘贴。
+   *
+   * 和上面的 text() 不是一回事:text() 是模拟按键注入文字,只适合当场敲的
+   * 那几个字符;这条走的是 scrcpy 的剪贴板协议,长文本、换行、中文都行,
+   * paste: true 时设备还会自己按下粘贴。
+   *
+   * 返回 false 表示会话已经收了或者设备没接住。
+   */
+  async setClipboard(
+    text: string,
+    options?: { paste?: boolean }
+  ): Promise<boolean> {
+    const controller = this.#client.controller
+    if (this.#closed || controller === undefined || text === "") return false
+
+    const sequence = this.#clipboardSequence
+    this.#clipboardSequence += 1n
+    // 先记账再发:设备收到之后会把同一段文字回推一条,那条不该再当成
+    // "设备复制了"同步回本机,否则两边会来回弹。
+    this.#lastClipboard = text
+
+    try {
+      await Promise.race([
+        controller.setClipboard({
+          sequence,
+          paste: options?.paste ?? false,
+          content: text,
+        }),
+        // 旧一点的 server 或者半路被杀时不会回 ack,别把调用方挂在这儿。
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, CLIPBOARD_ACK_TIMEOUT)
+        }),
+      ])
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async close(): Promise<void> {
     if (this.#closed) return
     this.#closed = true
     this.#decoder.dispose()
     this.#sound?.close()
     await this.#client.close()
+  }
+
+  /** 读设备推过来的剪贴板。会话结束(流断掉)时安静收摊。 */
+  async #readClipboard(
+    client: AdbScrcpyClient<AdbScrcpyOptionsLatest>
+  ): Promise<void> {
+    const clipboard: ReadableStream<string> | undefined = client.clipboard
+    if (clipboard === undefined) return
+
+    const reader = clipboard.getReader()
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value === undefined || value === "") continue
+        if (value === this.#lastClipboard) continue
+        this.#lastClipboard = value
+        this.#deviceClipboard = value
+        for (const listener of this.#clipboardListeners) listener(value)
+      }
+    } catch {
+      // 控制通道断了、会话关了都从这里出来,界面那边有 exited 通知。
+    }
   }
 }
 

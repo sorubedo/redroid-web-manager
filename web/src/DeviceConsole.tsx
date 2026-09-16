@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { Adb } from "@yume-chan/adb"
 import { AndroidKeyCode, AndroidKeyEventAction } from "@yume-chan/scrcpy"
 import { connectContainer } from "./adb/connect"
@@ -12,6 +12,7 @@ import { ApiFailure, type RedroidContainer } from "./api"
 import {
   Apps,
   ArrowLeft,
+  Copy,
   Expand,
   Home,
   Power,
@@ -23,7 +24,7 @@ import {
   VolumeOff,
   X,
 } from "./icons"
-import { Badge, Button, controlClass, cx, IconButton } from "./ui"
+import { Badge, Button, controlClass, copyText, cx, IconButton } from "./ui"
 
 /**
  * 控制台:整页接管,画面占满剩下的地方。
@@ -74,6 +75,12 @@ const KEY_CODES: Record<string, AndroidKeyCode> = {
   ArrowRight: AndroidKeyCode.ArrowRight,
 }
 
+/** 剪贴板内容的一句话摘要,提示条里用。 */
+const preview = (text: string): string => {
+  const flat = text.replace(/\s+/g, " ").trim()
+  return flat.length > 40 ? `${flat.slice(0, 40)}…` : flat
+}
+
 export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   const [adb, setAdb] = useState<Adb | null>(null)
   const [facts, setFacts] = useState<Facts | null>(null)
@@ -90,6 +97,9 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
 
   const [showShell, setShowShell] = useState(false)
   const [muted, setMuted] = useState(false)
+  // 设备复制了、但没写进本机剪贴板(页面没 HTTPS、浏览器要用户手势),
+  // 就先摆一条,等用户点。
+  const [deviceClipboard, setDeviceClipboard] = useState<string | null>(null)
   // 只剩画面:整页只留 canvas,别的都不显示。
   const [screenOnly, setScreenOnly] = useState(false)
   // 一句临时的提示(比如"设备没换方向")。
@@ -112,6 +122,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     setScreen(null)
     setScreenSize(null)
     setScreenGone(false)
+    setDeviceClipboard(null)
     setFacts(null)
 
     void (async () => {
@@ -159,6 +170,49 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   useEffect(() => {
     screen?.setMuted(muted)
   }, [screen, muted])
+
+  /**
+   * 设备复制了东西(scrcpy 的剪贴板自动同步)。
+   *
+   * 先试着自己写进本机剪贴板,但浏览器可能不给写(页面不是安全上下文、或者
+   * 需要一个用户手势),那就先摆一条出来,等用户自己点。
+   */
+  useEffect(() => {
+    if (screen === null) return
+    return screen.onClipboard((text) => {
+      void copyText(text).then((copied) => {
+        if (copied) {
+          setHint(`已同步设备剪贴板到本机:${preview(text)}`)
+        } else {
+          setDeviceClipboard(text)
+        }
+      })
+    })
+  }, [screen])
+
+  /** 本机剪贴板 -> 设备。走 scrcpy 的剪贴板协议,顺手触发一次粘贴。 */
+  const pasteToDevice = useCallback(async () => {
+    if (screen === null) return
+
+    let text: string | null = null
+    try {
+      text = await navigator.clipboard.readText()
+    } catch {
+      // 读不到通常是因为页面不在安全上下文里(局域网 http)。这条路没有别的
+      // 办法,只能让用户手动贴一次。
+      text = window.prompt(
+        "这个页面读不到本机剪贴板(需要 HTTPS 或 localhost)。把要发送到设备的文字贴到下面:"
+      )
+    }
+    if (text === null || text === "") return
+
+    const sent = await screen.setClipboard(text, { paste: true })
+    setHint(
+      sent
+        ? "已把本机的文字粘贴到设备。"
+        : "没能把文字送进设备,画面还好吗?"
+    )
+  }, [screen])
 
   /**
    * 把解码器的画布挂进页面,顺便把输入接上。
@@ -268,6 +322,13 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       // 只剩画面时 Esc 是"退出",不该再当成 Android 的返回键 —— 交给上面
       // 那个捕获阶段的监听器。
       if (event.key === "Escape" && screenOnly) return
+      // Ctrl/Cmd+V:本机剪贴板 -> 设备。走 scrcpy 的剪贴板协议,不逐字注入,
+      // 长文本、换行、中文都能过。
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
+        event.preventDefault()
+        void pasteToDevice()
+        return
+      }
       const keyCode = KEY_CODES[event.key]
       if (keyCode !== undefined) {
         event.preventDefault()
@@ -314,7 +375,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     }
     // screenOnly 切换时这个 effect 必须重跑:换布局会把 stage 这个 div 整个
     // 换掉(canvas 是它的子节点,跟着一起没了),得重新挂一次。
-  }, [screen, screenOnly])
+  }, [screen, screenOnly, pasteToDevice])
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -529,6 +590,41 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         )}
       </div>
 
+      {deviceClipboard !== null && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-line bg-panel px-3 py-2">
+          <span className="shrink-0 text-[11px] text-faint">设备剪贴板</span>
+          <span
+            className="min-w-0 flex-1 truncate font-mono text-xs text-muted"
+            title={deviceClipboard}
+          >
+            {preview(deviceClipboard)}
+          </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              void copyText(deviceClipboard).then((copied) => {
+                if (copied) {
+                  setDeviceClipboard(null)
+                  setHint("已复制到本机剪贴板。")
+                } else {
+                  setHint("浏览器还是不让写,换成 HTTPS 打开这个页面再试。")
+                }
+              })
+            }}
+          >
+            <Copy className="size-3.5" />
+            复制到本机
+          </Button>
+          <IconButton
+            onClick={() => setDeviceClipboard(null)}
+            title="收起"
+            aria-label="收起"
+          >
+            <X className="size-3.5" />
+          </IconButton>
+        </div>
+      )}
+
       {hint !== null && (
         <div className="pointer-events-none absolute inset-x-0 bottom-20 flex justify-center px-4">
           <p className="max-w-xl rounded-xl border border-line bg-panel/95 px-4 py-2 text-center text-xs leading-relaxed text-muted shadow-lg">
@@ -649,6 +745,13 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           title="请设备转 90°(当前界面锁竖屏的话不会跟着转)"
           disabled={screen === null}
           onClick={rotate}
+        />
+        <ConsoleKey
+          icon={<Copy className="size-5" />}
+          label="粘贴"
+          title="把本机剪贴板粘贴到设备(也可以直接按 Ctrl/Cmd+V)"
+          disabled={screen === null}
+          onClick={() => void pasteToDevice()}
         />
         <ConsoleKey
           icon={<Screen className="size-5" />}

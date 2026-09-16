@@ -109,23 +109,35 @@ export const Badge = ({
 
 /* ------------------------------------------------------------- 复制小工具 */
 
-const copyText = async (text: string): Promise<void> => {
+/** 把文字写进本机剪贴板。返回是不是真的写进去了。 */
+export const copyText = async (text: string): Promise<boolean> => {
   // 页面可能跑在 http 上(clipboard 只在安全上下文里有),
   // 所以还得留一条老办法兜底。
   try {
     await navigator.clipboard.writeText(text)
-    return
+    return true
   } catch {
     /* 下面再试一次 */
   }
+  // 这个临时框会抢走焦点,而控制台是靠 canvas 上的键盘监听吃饭的,复制完
+  // 得把焦点还回去,不然用户得再点一下画面键盘才活。
+  const previous = document.activeElement
   const area = document.createElement("textarea")
   area.value = text
   area.style.position = "fixed"
   area.style.opacity = "0"
   document.body.append(area)
   area.select()
-  document.execCommand("copy")
-  area.remove()
+  let copied = false
+  try {
+    copied = document.execCommand("copy")
+  } catch {
+    copied = false
+  } finally {
+    area.remove()
+    if (previous instanceof HTMLElement) previous.focus({ preventScroll: true })
+  }
+  return copied
 }
 
 export const CopyButton = ({
