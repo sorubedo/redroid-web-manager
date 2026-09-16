@@ -15,7 +15,8 @@ import {
  * 列出这台 Docker 上已经创建的 redroid 容器。
  *
  * "是不是 redroid 容器"**不看镜像是不是原版**,满足任意一条就算:
- *   1. 镜像名里有 redroid
+ *   1. 镜像的仓库名正好是 redroid(名字里带上 redroid 的不算,否则本程序
+ *      自己的 redroid-web-manager 镜像会被当成安卓容器)
  *   2. 命令行里带了 androidboot.* 或 ro.* 参数(只有 redroid 会这么传)
  *
  * 对外只有一个函数。底下藏的是调用者不该操心的东西:Docker 那几种别扭的
@@ -364,8 +365,21 @@ const isRedroidContainer = (
   // 本程序创建的容器一定带这个标签 —— 这是最准的一条,即使镜像被重新打了
   // 一个跟 redroid 无关的名字也认得出来。
   labels?.[MANAGED_LABEL] === "true" ||
-  image.includes("redroid") ||
+  isRedroidImageName(image) ||
   params.length > 0
+
+/**
+ * 镜像引用的仓库名是不是 redroid —— 形状是 [地址/]命名空间/名字[:标签][@摘要],
+ * 只取最后一段并切掉标签。别的仓库也发布 redroid,所以不能只认 redroid/redroid。
+ */
+const isRedroidImageName = (reference: string): boolean => {
+  const [withoutDigest = ""] = reference.split("@")
+  const repository = withoutDigest.split("/").pop() ?? ""
+  const separator = repository.indexOf(":")
+  const name =
+    separator === -1 ? repository : repository.slice(0, separator)
+  return name === "redroid"
+}
 
 /**
  * 找宿主上映射到 5555(adb)的端口。
