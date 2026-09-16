@@ -13,7 +13,12 @@ export default defineConfig({
     proxy: {
       // 后端默认在 127.0.0.1:3000。用 --port / REDROID_WEB_PORT 挪过的话,
       // 这里用 REDROID_WEB_API 指过去,免得两个地方各写一份。
-      "/api": process.env["REDROID_WEB_API"] ?? "http://127.0.0.1:3000",
+      "/api": {
+        target: process.env["REDROID_WEB_API"] ?? "http://127.0.0.1:3000",
+        // adb 转发的通道是 WebSocket,挂在 /api 底下。不开这个的话开发时
+        // 只有普通请求能过去,握手会失败 —— 而且报错很难看出是这个原因。
+        ws: true,
+      },
     },
   },
 })

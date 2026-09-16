@@ -5,15 +5,21 @@ import Fastify, {
 } from "fastify"
 import multipart from "@fastify/multipart"
 import fastifyStatic from "@fastify/static"
+import websocket from "@fastify/websocket"
 import type Docker from "dockerode"
 import {
+  AdbPortNotPublished,
   ContainerNotFound,
+  ContainerNotRunning,
   NotARedroidContainer,
   listRedroidContainers,
   removeRedroidContainer,
   startRedroidContainer,
   stopRedroidContainer,
 } from "./containers.js"
+import { AdbConnectFailed } from "./adb/connection.js"
+import { forwardAdbSocket, type AdbForwardSink } from "./adb/forward.js"
+import { AdbSessions } from "./adb/sessions.js"
 import {
   AdbPortTaken,
   ContainerNameTaken,
@@ -59,6 +65,11 @@ export interface ServerOptions {
    * 就只提供 API —— 开发时前端归 vite 管,部署时可以用 --static-dir 指过来。
    */
   readonly staticDir?: string | null
+  /**
+   * 后端从哪儿去连容器的 adb 端口。null(默认)表示跟着容器的绑定地址走 ——
+   * 后端和容器在同一台机器上时总是对的;后端自己跑在容器里时要显式指过去。
+   */
+  readonly adbHost?: string | null
 }
 
 // 把模块抛出来的错误翻译成 HTTP:一个状态码 + 一段给用户看的话。
@@ -85,6 +96,38 @@ const describeFailure = (
     return {
       status: 409,
       body: { message: error.message, hint: "这里只管理 redroid 容器。" },
+    }
+  }
+  // 容器不给连的两种情况:没发布端口、没在跑。都是"你得先去改点什么",
+  // 所以是 409 而不是 404 —— 容器确实在。
+  if (error instanceof AdbPortNotPublished) {
+    return {
+      status: 409,
+      body: {
+        message: error.message,
+        hint: "端口映射在建容器的时候就定死了(Docker 不给已建的容器加端口),得重建一个,建的时候把 adb 端口填上。",
+      },
+    }
+  }
+  if (error instanceof ContainerNotRunning) {
+    return {
+      status: 409,
+      body: {
+        message: error.message,
+        hint: "先在「容器」那一页把它启动起来。",
+      },
+    }
+  }
+  // 容器在跑、端口也发布着,但那条 TCP 就是连不上。多半是 Android 还没
+  // 起来(redroid 开机要十几秒),所以算"依赖暂时不可用",和 Docker 连不上
+  // 一样用 503,让调用方知道过会儿再来是有意义的。
+  if (error instanceof AdbConnectFailed) {
+    return {
+      status: 503,
+      body: {
+        message: error.message,
+        hint: "容器可能还在启动(Android 起来要十几秒),等会儿再试;一直这样就看容器的日志。",
+      },
     }
   }
   if (error instanceof ImageNotFound) {
@@ -154,12 +197,88 @@ const describeFailure = (
   return null
 }
 
+/**
+ * WebSocket 收到的东西 -> 字节。
+ *
+ * ws 给过来的可能是 Buffer、ArrayBuffer、分片时的数组,也可能(别人手写
+ * 的请求)是文本。我们只走二进制:文本没有意义,当没收到。
+ */
+const toBytes = (data: unknown): Uint8Array | null => {
+  if (typeof data === "string") return null
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+
+  if (Array.isArray(data)) {
+    // 分片的二进制消息。ADB 本来就是字节流,拼起来正好 —— 分片边界没有
+    // 任何含义。
+    const chunks: Uint8Array[] = []
+    for (const part of data) {
+      const chunk = toBytes(part)
+      if (chunk !== null) chunks.push(chunk)
+    }
+    const joined = new Uint8Array(
+      chunks.reduce((total, chunk) => total + chunk.byteLength, 0)
+    )
+    let offset = 0
+    for (const chunk of chunks) {
+      joined.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return joined
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  }
+
+  return null
+}
+
+/** 按字节截断,别把一个多字节的字符切成两半。 */
+const sliceBytes = (text: string, maxBytes: number): string => {
+  let result = ""
+  for (const char of text) {
+    if (Buffer.byteLength(result + char, "utf8") > maxBytes) break
+    result += char
+  }
+  return result
+}
+
+/**
+ * 关 WebSocket 时给对面带一句话。
+ *
+ * ws 对 close 帧的说明文字有 123 字节的硬限制,超了整帧会被丢掉 —— 浏览器
+ * 那边就只剩一个没头没尾的 1006,什么都看不出来。所以必须按字节截断。
+ */
+const closeReason = (error: unknown): string => {
+  const described = describeFailure(error)
+  const body = (described?.body ?? {
+    message: error instanceof Error ? error.message : String(error),
+    hint: "",
+  }) as { readonly message?: string; readonly hint?: string }
+
+  const message = body.message ?? "未知错误"
+  const text = body.hint ? `${message} —— ${body.hint}` : message
+  return sliceBytes(text, 120)
+}
+
 export const createServer = (options: ServerOptions): FastifyInstance => {
-  const { docker, endpoint, staticDir } = options
+  const { docker, endpoint, staticDir, adbHost = null } = options
   const app = Fastify({ logger: false })
 
   app.register(multipart, {
     limits: { fileSize: MAX_LAYER_BYTES, files: 16, fields: 10 },
+  })
+
+  // WebSocket 的插件注册必须在"带 websocket: true 的路由"之前被加载:
+  // 它是靠 onRoute 钩子认出这些路由的,而这个钩子要等插件加载时才挂上去。
+  // 下面那条 WS 路由因此放在一个子插件里(见「ADB 转发」那一段)。
+  app.register(websocket)
+
+  // 每个容器一条到 adbd 的长连接,所有会话共用。它是有状态的(连接、借用
+  // 计数、空闲计时器),所以建一次放在这儿,跟着这个 server 实例走。
+  const adbSessions = new AdbSessions({ docker, endpoint, host: adbHost })
+  app.addHook("onClose", () => {
+    adbSessions.close()
   })
 
   // 每个请求打一行,方便你对着浏览器确认请求真的到了后端
@@ -342,7 +461,11 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   app.post(
     "/api/containers/:id/stop",
     handler(async (request) => {
-      await stopRedroidContainer(docker, endpoint, containerId(request))
+      const id = containerId(request)
+      await stopRedroidContainer(docker, endpoint, id)
+      // 停掉的容器那条 adb 连接已经没用了。虽然它自己也会断,但这里立刻
+      // 忘掉,免得下一次请求先撞上一条死连接再重连。
+      adbSessions.forget(id)
       return { ok: true }
     })
   )
@@ -350,10 +473,109 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   app.delete(
     "/api/containers/:id",
     handler(async (request) => {
-      await removeRedroidContainer(docker, endpoint, containerId(request))
+      const id = containerId(request)
+      await removeRedroidContainer(docker, endpoint, id)
+      adbSessions.forget(id)
       return { ok: true }
     })
   )
+
+  /* ---------- ADB 转发 ---------- */
+
+  // 浏览器要拿这些才能造出一个 Adb 实例:banner(屏幕上看不到的型号信息)、
+  // 单包最大长度、以及有哪边支持哪些 feature(决定它用 shell v1 还是 v2)。
+  // 这些都是握手时 adbd 告诉我们的,浏览器自己连不到 adbd,只能来问。
+  app.get(
+    "/api/containers/:id/adb",
+    handler(async (request) => {
+      const lease = await adbSessions.acquire(containerId(request))
+      try {
+        const { adb } = lease
+        return {
+          serial: adb.serial,
+          maxPayloadSize: adb.maxPayloadSize,
+          clientFeatures: adb.clientFeatures,
+          banner: {
+            product: adb.banner.product,
+            model: adb.banner.model,
+            device: adb.banner.device,
+            features: adb.banner.features,
+          },
+        }
+      } finally {
+        lease.release()
+      }
+    })
+  )
+
+  // 一条 WebSocket 对应设备上的一条 ADB socket。?service= 就是 ADB 的
+  // service 字符串(adb shell 是 `shell:...`,推文件是 `sync:`,scrcpy 是
+  // `localabstract:scrcpy`),原样交给设备,不解释也不过滤 —— 这是方案 A
+  // 有意选的:能连上就等于容器里的超级管理员。
+  //
+  // 放在子插件里是因为要等 websocket 插件的 onRoute 钩子挂上(见上面)。
+  app.register(async (scope) => {
+    scope.get(
+      "/api/containers/:id/adb/ws",
+      { websocket: true },
+      (socket, request) => {
+        const id = (request.params as { id: string }).id
+        const service = (request.query as { service?: string }).service
+        if (service === undefined || service === "") {
+          socket.close(1008, "缺少 service 参数")
+          return
+        }
+
+        // 这个回调不能是 async 的:Fastify 会把返回的 Promise 当成"请求还没
+        // 处理完",而 WebSocket 的生命周期跟路由时长没关系。所以自己起一个
+        // 立即执行的函数,错误在里面收口 —— 那时候 HTTP 响应早就发出去了,
+        // 唯一的报错途径就是关掉这条 WS 并带上原因。
+        void (async () => {
+          // WebSocket 的形状正好就是 AdbForwardSink 要的那几样,所以这里
+          // 只做一次转换,不 import ws 的类型 —— 转发器那边对这个对象没有
+          // 更多要求。
+          const sink: AdbForwardSink = {
+            get bufferedAmount() {
+              return socket.bufferedAmount
+            },
+            send: (chunk) => {
+              socket.send(chunk)
+            },
+            close: () => {
+              // ws 的 close 不带参数是"正常关闭";对面自己已经关了的时候
+              // 再调一次也没事(它会自己忽略)。
+              socket.close()
+            },
+            onMessage: (listener) => {
+              socket.on("message", (data: unknown) => {
+                const chunk = toBytes(data)
+                if (chunk !== null) listener(chunk)
+              })
+            },
+            onClose: (listener) => {
+              socket.on("close", () => listener())
+            },
+          }
+
+          let lease
+          try {
+            lease = await adbSessions.acquire(id)
+          } catch (error) {
+            socket.close(1011, closeReason(error))
+            return
+          }
+
+          try {
+            await forwardAdbSocket(sink, lease.adb, service)
+          } catch (error) {
+            socket.close(1011, closeReason(error))
+          } finally {
+            lease.release()
+          }
+        })()
+      }
+    )
+  })
 
   // 前端页面。放在所有 API 路由后面注册,免得静态路由先把手伸到 /api 上。
   //

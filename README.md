@@ -32,6 +32,7 @@ pnpm start          # = node dist/index.js
 | `--static-dir <目录>` | `REDROID_WEB_STATIC_DIR` | 仓库里的 `web/dist` | 一并托管前端页面 |
 | `--no-web` | `REDROID_WEB_STATIC=off` | 关 | 只提供 `/api`,不管前端 |
 | `--docker-host <地址>` | `REDROID_WEB_DOCKER_HOST` | `unix:///var/run/docker.sock` | 要连的 Docker;`DOCKER_HOST` 也认,但带前缀的优先 |
+|  | `REDROID_WEB_ADB_HOST` | 跟着容器的绑定地址走 | 去哪台机器连容器的 adb 端口。后端自己跑在容器里时要指到宿主,例如 `host.docker.internal` |
 
 `--host` 默认是 `127.0.0.1`:这个服务没有登录验证,却能操作 Docker(等于
 宿主机的 root),所以默认不让别人连。写成 `0.0.0.0` 只有在"容器里跑、宿主上

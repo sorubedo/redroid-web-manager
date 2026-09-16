@@ -104,6 +104,69 @@ export class NotARedroidContainer extends Error {
   }
 }
 
+/**
+ * 容器没把 5555 发布到宿主上,后端就够不着它的 adb。
+ *
+ * 这是建容器时能选的:端口留空就不映射。改了得重建容器(Docker 不支持给
+ * 已经建好的容器加端口映射),所以提示里要说清楚这一点。
+ */
+export class AdbPortNotPublished extends Error {
+  readonly id: string
+
+  constructor(id: string) {
+    super(`${id} 没有把 adb 端口(5555)发布到宿主上`)
+    this.name = "AdbPortNotPublished"
+    this.id = id
+  }
+}
+
+/** 容器没在跑。映射关系还在,但没人在那个端口上听。 */
+export class ContainerNotRunning extends Error {
+  readonly id: string
+  readonly state: string
+
+  constructor(id: string, state: string) {
+    super(`${id} 现在是 ${state} 状态,没在跑`)
+    this.name = "ContainerNotRunning"
+    this.id = id
+    this.state = state
+  }
+}
+
+/**
+ * 容器的 adb 在宿主的哪儿。port 是宿主上的端口,bindAddress 是它绑在宿主
+ * 哪个地址上(0.0.0.0 表示所有网卡)。
+ *
+ * 只回答"Docker 说它映射到哪儿",不管"该怎么连" —— 从哪台机器去连、用
+ * 127.0.0.1 还是别的地址,那是调用者的事(见 adb/sessions.ts)。
+ */
+export interface RedroidAdbPort {
+  readonly port: number
+  readonly bindAddress: string | null
+}
+
+export const findRedroidAdbPort = async (
+  docker: Docker,
+  endpoint: DockerEndpoint,
+  id: string
+): Promise<RedroidAdbPort> => {
+  const container = await findRedroidContainer(docker, endpoint, id)
+
+  const state = container.State?.Status ?? "unknown"
+  if (state !== "running") throw new ContainerNotRunning(id, state)
+
+  const port = adbPortOf(container.NetworkSettings, container.HostConfig)
+  if (port === null) throw new AdbPortNotPublished(id)
+
+  return {
+    port,
+    bindAddress: adbBindAddressOf(
+      container.NetworkSettings,
+      container.HostConfig
+    ),
+  }
+}
+
 export const listRedroidContainers = async (
   docker: Docker,
   endpoint: DockerEndpoint

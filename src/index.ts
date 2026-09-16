@@ -49,6 +49,9 @@ const USAGE = `用法:redroid-web-manager [选项]
   ${ENV_PREFIX}STATIC_DIR     同 --static-dir
   ${ENV_PREFIX}STATIC=off     同 --no-web
   ${ENV_PREFIX}DOCKER_HOST    同 --docker-host(优先级高于 DOCKER_HOST)
+  ${ENV_PREFIX}ADB_HOST       去哪台机器连容器的 adb 端口。默认跟着容器的
+                              绑定地址走(通常就是 127.0.0.1);后端自己跑在
+                              容器里时要指到宿主,例如 host.docker.internal
 `
 
 /** 打印错误和提示,返回退出码 1。 */
@@ -171,7 +174,12 @@ const main = async (): Promise<number> => {
     return reportFailure(error)
   }
 
-  const server = createServer({ docker, endpoint, staticDir })
+  const server = createServer({
+    docker,
+    endpoint,
+    staticDir,
+    adbHost: config.adbHost,
+  })
   const { host, port } = config
   try {
     await server.listen({ host, port })

@@ -43,6 +43,8 @@ export interface ServerConfig {
   readonly staticDir: string | null
   /** 目录是用户明确指定的还是默认推出来的 —— 指定的找不到要报错,默认的找不到就算了 */
   readonly staticDirExplicit: boolean
+  /** 去连容器 adb 端口的位置;null 表示跟着容器的绑定地址走 */
+  readonly adbHost: string | null
 }
 
 const nonEmpty = (value: string | undefined): string | null => {
@@ -96,6 +98,34 @@ const isOff = (value: string): boolean =>
   ["off", "0", "false", "no"].includes(value.toLowerCase())
 
 /**
+ * 后端从哪儿去连容器的 adb 端口。
+ *
+ * 不写就是 null —— 跟着容器绑定的地址走(绑 127.0.0.1 或者所有网卡时,
+ * 连 127.0.0.1;绑在某个具体地址上时,连那个地址)。这在"后端和容器在同
+ * 一台机器上"时总是对的。
+ *
+ * 后端自己跑在容器里的时候就不对了:宿主上发布的端口,从后端容器里看
+ * 127.0.0.1 是它自己。那种情况下得显式指过去(host.docker.internal、
+ * 172.17.0.1、宿主的内网地址)。这里可以是主机名,所以不按 IP 字面量校验
+ * —— 和监听地址那条规矩不一样,那条是因为"听在哪儿"不该有 DNS 的不确定
+ * 性,而"连到哪儿"本来就是连接方的事。
+ */
+const resolveAdbHost = (
+  env: Record<string, string | undefined>
+): string | null => {
+  const raw = nonEmpty(env[envName("ADB_HOST")])
+  if (raw === null) return null
+
+  if (/[\s/]/.test(raw)) {
+    throw new ConfigError(
+      `连 adb 的地址不能带空格和斜杠,收到的是:${raw}`,
+      `例如 ${envName("ADB_HOST")}=host.docker.internal(后端在容器里,容器在宿主上)`
+    )
+  }
+  return raw
+}
+
+/**
  * 前端静态目录。
  *
  * 默认是仓库里的 web/dist(build 的产物);找不到就当没有,不影响 API。
@@ -146,6 +176,7 @@ export const resolveServerConfig = (options: {
     port: resolvePort(options.fromCli.port, options.env),
     staticDir: staticDir.dir,
     staticDirExplicit: staticDir.explicit,
+    adbHost: resolveAdbHost(options.env),
   }
 }
 
