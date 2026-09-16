@@ -32,7 +32,7 @@ import { ApiFailure } from "../api"
  */
 
 /** 必须和 src/scrcpy-server.ts 里的版本一致。 */
-const SCRCPY_VERSION = "3.3.3"
+const SCRCPY_VERSION = "4.1"
 
 /** 画面最大边长。手机上 1080 的原生分辨率推到浏览器上,流量和 CPU 都不划算。 */
 const DEFAULT_MAX_SIZE = 1280
@@ -68,7 +68,7 @@ export class ScrcpyScreen {
     }
 
     const jar = await fetchServerJar()
-    // 90KB,每次会话推一遍。设备重启会清掉 /data/local/tmp,为省这点流量
+    // 七百多 KB,每次会话推一遍。设备重启会清掉 /data/local/tmp,为省这点流量
     // 去做"文件在不在"的判断不值当。
     await AdbScrcpyClient.pushServer(adb, jar)
 
@@ -81,6 +81,8 @@ export class ScrcpyScreen {
         // 那台"手机"多数时候也没人听。
         audio: false,
         control: true,
+        // 4.1 把编码格式做成了必填项(以前有默认值)。
+        videoCodec: "h264",
         maxSize: DEFAULT_MAX_SIZE,
         videoBitRate: VIDEO_BIT_RATE,
       })
@@ -105,14 +107,14 @@ export class ScrcpyScreen {
     return new ScrcpyScreen(client, decoder, renderer)
   }
 
-  readonly #client: AdbScrcpyClient<AdbScrcpyOptionsLatest<true>>
+  readonly #client: AdbScrcpyClient<AdbScrcpyOptionsLatest>
   readonly #decoder: WebCodecsVideoDecoder
   readonly #renderer: CanvasVideoFrameRenderer
 
   #closed = false
 
   private constructor(
-    client: AdbScrcpyClient<AdbScrcpyOptionsLatest<true>>,
+    client: AdbScrcpyClient<AdbScrcpyOptionsLatest>,
     decoder: WebCodecsVideoDecoder,
     renderer: CanvasVideoFrameRenderer
   ) {

@@ -176,11 +176,14 @@ importers:
         specifier: ^11.3.0
         version: 11.3.0
       '@yume-chan/adb':
-        specifier: ^2.6.4
-        version: 2.6.4
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
+      '@yume-chan/adb-credential-nodejs':
+        specifier: 3.0.0-beta.2
+        version: 3.0.0-beta.2
       '@yume-chan/stream-extra':
-        specifier: ^2.6.1
-        version: 2.6.1
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       dockerode:
         specifier: ^5.0.1
         version: 5.0.1(supports-color@10.2.2)
@@ -219,20 +222,20 @@ importers:
         specifier: ^2.2.10
         version: 2.2.10(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@yume-chan/adb':
-        specifier: ^2.6.4
-        version: 2.6.4
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       '@yume-chan/adb-scrcpy':
-        specifier: ^2.3.2
-        version: 2.3.2
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       '@yume-chan/scrcpy':
-        specifier: ^2.3.0
-        version: 2.3.0
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       '@yume-chan/scrcpy-decoder-webcodecs':
-        specifier: ^2.5.3
-        version: 2.5.3
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       '@yume-chan/stream-extra':
-        specifier: ^2.6.1
-        version: 2.6.1
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -956,35 +959,44 @@ packages:
       oxc-transform-react:
         optional: true
 
-  '@yume-chan/adb-scrcpy@2.3.2':
-    resolution: {integrity: sha512-wg45dep+dYy4MAVMtsooPAo/aXKiGbpGHzcQWoHnl4uE4YJKrZK0sK5L++rPNM0WbwlPdSpZ32jMJT+i0u1Mdw==}
+  '@yume-chan/adb-credential-nodejs@3.0.0-beta.2':
+    resolution: {integrity: sha512-Z2k72hoIx8/AIoYdrBxA4bjIv0wNZwKNdypsLJo+9h50Ph8FgscOQ+OoSsIJ8flxkO4gR8DukkLJExaoPvom4g==}
 
-  '@yume-chan/adb@2.6.4':
-    resolution: {integrity: sha512-aaN21ZOLjWW1nC09C21f0yQkCqxkuMWMqheryGEbmGLPhuzIyOhTurJK8cXh5ZnQ+ptdKBexqvoG6zYoul9XPA==}
+  '@yume-chan/adb-credential-web@3.0.0-beta.2':
+    resolution: {integrity: sha512-jyyHgXfOXxlIfzlRbRFgMfMP5Zh55G7WA2OWKs19LY+JtNMLO/I/74Gx0tfOtw1w3hk87YpC3Sfh9uGHE6pAsw==}
+
+  '@yume-chan/adb-scrcpy@3.0.0-beta.2':
+    resolution: {integrity: sha512-OStX+9sXXgLv8DRMJbVht9L3u75JHsptO2j77Vrxw3H1lYkBmu9j0pZ0VJQa3/I2TfIyU4zaN7oH4o8bTxhvdQ==}
+
+  '@yume-chan/adb@3.0.0-beta.2':
+    resolution: {integrity: sha512-iyzMhUpiptTLxdV4iOryxLPjOG6uQ6uk04KBJwp+l+f61m3ZaGwwGKCYa6I1SUSz9E+8MC9gxV0Dij82oVDuxg==}
 
   '@yume-chan/async@4.1.3':
     resolution: {integrity: sha512-0vzhNJMkWUPyjKzUK4rqHEeCU6YQtF78RsB1kFRB6Y2BLupmEQNxcSb0mjKabPL9jZpCCiLa5KL8oTOJClUVaw==}
 
-  '@yume-chan/event@2.0.0':
-    resolution: {integrity: sha512-z56MDOcX1QlgLUCuA6th3r10negVb7A3gzY//TwSC9ZOvzuRlrAqXcxZf1T3hHfNMk/NFO9RIgQgegXYSfaqLw==}
+  '@yume-chan/event@3.0.0-beta.2':
+    resolution: {integrity: sha512-Lihf7J1lNQNgyx/FFl7u55gVVmvSXv+Z2heYZjz0gFq8zGN6WNOKBtXnaJVGuXnumTWmcm9seLqcWc15RaOlPA==}
 
-  '@yume-chan/no-data-view@2.0.0':
-    resolution: {integrity: sha512-0GRJrrt6wtZlbiE92jocHOnaAvjQ+Y7xwwhwOPqLkwf90Kj1JIHJ5Zh4wJVQSQIkzfRSOpM+jeEQdC2K15snlA==}
+  '@yume-chan/media-codec@3.0.0-beta.2':
+    resolution: {integrity: sha512-SY8Vk0BQk79O1LvXBjX83mDygEB+gVjKByEz6DbEF630Ak5Ks5WNAhGpe39PH0dXrod4nrNA47LJzvl/PsJa+A==}
 
-  '@yume-chan/scrcpy-decoder-tinyh264@2.1.0':
-    resolution: {integrity: sha512-Ou2ejwUZEUlwyorqzjzN6Y3YqMZvAmUi2jK9QsPBbQIVDYu/kbql5l5aXJzatgURTmxbf5HvGnOuEDFzJMqGsQ==}
+  '@yume-chan/no-data-view@3.0.0-beta.2':
+    resolution: {integrity: sha512-+YaNDEhEiW6JM4DTeIkr7twls+bLjZlRqi9KFR17y9hASAnRNGVUVwYntvozCw5cfCDxjRgFdGYRRSThGq3x+A==}
 
-  '@yume-chan/scrcpy-decoder-webcodecs@2.5.3':
-    resolution: {integrity: sha512-iHKKVrEd0JP1x4+MSkKKD6beiwf9wqViGdAzvXTb3BMTYyvJXoihiESaUDVDkesGp2n+mtEKQ237V02wbzkmcw==}
+  '@yume-chan/scrcpy-decoder-shared@3.0.0-beta.2':
+    resolution: {integrity: sha512-YH22RYdxxi5qKJF8UE+llfquhGjqSFFvf7iVOn92JSQOZU2yEeSG/45ma/vAxqhBOrSj+2aqX47mdhxjHgQ7aQ==}
 
-  '@yume-chan/scrcpy@2.3.0':
-    resolution: {integrity: sha512-rpsNvy7H8mf6gVsWYRSkIXmk0wVsP3XOdw3kASokwZkSWtygB2Z1wjoPaEAvaayVCjsz+y/YfG35TOcykEihGw==}
+  '@yume-chan/scrcpy-decoder-webcodecs@3.0.0-beta.2':
+    resolution: {integrity: sha512-uBPpg5K79+2eUGzrtg17KELoOf6dH0I69FEChk8sKS1ZXQIcKYYequpoU7vMLEDNfHE3dhgVbUYQsheS+bUyDg==}
 
-  '@yume-chan/stream-extra@2.6.1':
-    resolution: {integrity: sha512-GQ+Q0SQf9p6Fl7ZK0UO5vHVGBJgkTJm/WXKurUMpjHQV4VUpjZ2hrQ744aCfT7WwSol7Bz/uEiXWmk240Hr/hg==}
+  '@yume-chan/scrcpy@3.0.0-beta.2':
+    resolution: {integrity: sha512-9iDyPF/K7r6jjRNvQ//Tz2VY3m9vNNz3d2hqFLpN5BI7uwrpdScqXH848u9MXukplgr+25dWXGOeqTbByVzscg==}
 
-  '@yume-chan/struct@2.3.2':
-    resolution: {integrity: sha512-afoCnSKV+5HRK7e4innVd9YTYDyNWdjA1CVQa1j8rWYnmr7HGZfdkHMQr+AESLk6GxWFMzOIPQIG6nYOTGMFIw==}
+  '@yume-chan/stream-extra@3.0.0-beta.2':
+    resolution: {integrity: sha512-94YT3d1+DlrGrKIlwB9o9YTPs7yf2+C+tjPi9cAWviANGixAv+K8V27iDIC4FKO6HUaAvRNdHai0MuXufiW8Zg==}
+
+  '@yume-chan/struct@3.0.0-beta.2':
+    resolution: {integrity: sha512-6wyW1i3IGlRurdFt2jzfE1FSq+lsgp7ccbzBWUW/7O1+GtRRFjMUljnoeqcbcmerRhCb6rHI6GRxk2EOKrUNLw==}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -1726,9 +1738,6 @@ packages:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
 
-  tinyh264@0.0.7:
-    resolution: {integrity: sha512-etkBRgYkSFBdAi2Cqk4sZgi+xWs/vhzNgvjO3z2i4WILeEmORiNqxuQ4URJatrWQ9LPNV3WPWAtzsh/LA/XL/g==}
-
   toad-cache@3.7.4:
     resolution: {integrity: sha512-m1TdR/rvT7kgGJZhspNtXdsdYk0fddFpJJFlG5s+UkPFo6lkLoZ3YLOaovPYjq1R75NP5JfeTlSHaOsE09peCg==}
     engines: {node: '>=20'}
@@ -1856,12 +1865,6 @@ packages:
   yargs@18.0.0:
     resolution: {integrity: sha512-4UEqdc2RYGHZc7Doyqkrqiln3p9X2DZVxaGbwhn2pi7MrRagKaOcIKe8L3OxYcbhXLgLFUS3zAYuQjKBQgmuNg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=23}
-
-  yuv-buffer@1.0.1:
-    resolution: {integrity: sha512-1clmBXOyTX2R8OG0vaTFu5yP/C2XG4ULe+2HUu7c/aYE1fWpKvkGEzqMhUjknXp1Ts6Xfrc0YtIBbYxvaau38Q==}
-
-  yuv-canvas@1.3.0:
-    resolution: {integrity: sha512-zwl+lJgy23iTyCCUZbi0IRP+WezeKNeGEFU+a0gmtVRa81zL6mKJVxr+NKzlveJ2okz4aIOUEPrTs6yjuPt+Cg==}
 
 snapshots:
 
@@ -2370,66 +2373,82 @@ snapshots:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)
 
-  '@yume-chan/adb-scrcpy@2.3.2':
+  '@yume-chan/adb-credential-nodejs@3.0.0-beta.2':
     dependencies:
-      '@yume-chan/adb': 2.6.4
-      '@yume-chan/async': 4.1.3
-      '@yume-chan/event': 2.0.0
-      '@yume-chan/scrcpy': 2.3.0
-      '@yume-chan/stream-extra': 2.6.1
-      '@yume-chan/struct': 2.3.2
+      '@yume-chan/adb': 3.0.0-beta.2
+      '@yume-chan/adb-credential-web': 3.0.0-beta.2
 
-  '@yume-chan/adb@2.6.4':
+  '@yume-chan/adb-credential-web@3.0.0-beta.2':
+    dependencies:
+      '@yume-chan/adb': 3.0.0-beta.2
+      '@yume-chan/async': 4.1.3
+      '@yume-chan/stream-extra': 3.0.0-beta.2
+      '@yume-chan/struct': 3.0.0-beta.2
+
+  '@yume-chan/adb-scrcpy@3.0.0-beta.2':
+    dependencies:
+      '@yume-chan/adb': 3.0.0-beta.2
+      '@yume-chan/async': 4.1.3
+      '@yume-chan/event': 3.0.0-beta.2
+      '@yume-chan/media-codec': 3.0.0-beta.2
+      '@yume-chan/scrcpy': 3.0.0-beta.2
+      '@yume-chan/stream-extra': 3.0.0-beta.2
+      '@yume-chan/struct': 3.0.0-beta.2
+
+  '@yume-chan/adb@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
-      '@yume-chan/event': 2.0.0
-      '@yume-chan/no-data-view': 2.0.0
-      '@yume-chan/stream-extra': 2.6.1
-      '@yume-chan/struct': 2.3.2
+      '@yume-chan/event': 3.0.0-beta.2
+      '@yume-chan/no-data-view': 3.0.0-beta.2
+      '@yume-chan/stream-extra': 3.0.0-beta.2
+      '@yume-chan/struct': 3.0.0-beta.2
 
   '@yume-chan/async@4.1.3': {}
 
-  '@yume-chan/event@2.0.0':
+  '@yume-chan/event@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
 
-  '@yume-chan/no-data-view@2.0.0': {}
+  '@yume-chan/media-codec@3.0.0-beta.2':
+    dependencies:
+      '@yume-chan/no-data-view': 3.0.0-beta.2
 
-  '@yume-chan/scrcpy-decoder-tinyh264@2.1.0':
+  '@yume-chan/no-data-view@3.0.0-beta.2': {}
+
+  '@yume-chan/scrcpy-decoder-shared@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
-      '@yume-chan/event': 2.0.0
-      '@yume-chan/scrcpy': 2.3.0
-      '@yume-chan/stream-extra': 2.6.1
-      tinyh264: 0.0.7
-      yuv-buffer: 1.0.1
-      yuv-canvas: 1.3.0
+      '@yume-chan/event': 3.0.0-beta.2
+      '@yume-chan/scrcpy': 3.0.0-beta.2
+      '@yume-chan/stream-extra': 3.0.0-beta.2
 
-  '@yume-chan/scrcpy-decoder-webcodecs@2.5.3':
+  '@yume-chan/scrcpy-decoder-webcodecs@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
-      '@yume-chan/event': 2.0.0
-      '@yume-chan/no-data-view': 2.0.0
-      '@yume-chan/scrcpy': 2.3.0
-      '@yume-chan/scrcpy-decoder-tinyh264': 2.1.0
-      '@yume-chan/stream-extra': 2.6.1
+      '@yume-chan/event': 3.0.0-beta.2
+      '@yume-chan/media-codec': 3.0.0-beta.2
+      '@yume-chan/no-data-view': 3.0.0-beta.2
+      '@yume-chan/scrcpy': 3.0.0-beta.2
+      '@yume-chan/scrcpy-decoder-shared': 3.0.0-beta.2
+      '@yume-chan/stream-extra': 3.0.0-beta.2
 
-  '@yume-chan/scrcpy@2.3.0':
+  '@yume-chan/scrcpy@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
-      '@yume-chan/no-data-view': 2.0.0
-      '@yume-chan/stream-extra': 2.6.1
-      '@yume-chan/struct': 2.3.2
+      '@yume-chan/event': 3.0.0-beta.2
+      '@yume-chan/no-data-view': 3.0.0-beta.2
+      '@yume-chan/stream-extra': 3.0.0-beta.2
+      '@yume-chan/struct': 3.0.0-beta.2
 
-  '@yume-chan/stream-extra@2.6.1':
+  '@yume-chan/stream-extra@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
-      '@yume-chan/struct': 2.3.2
+      '@yume-chan/struct': 3.0.0-beta.2
 
-  '@yume-chan/struct@2.3.2':
+  '@yume-chan/struct@3.0.0-beta.2':
     dependencies:
       '@yume-chan/async': 4.1.3
-      '@yume-chan/no-data-view': 2.0.0
+      '@yume-chan/no-data-view': 3.0.0-beta.2
 
   abstract-logging@2.0.1: {}
 
@@ -3177,8 +3196,6 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
 
-  tinyh264@0.0.7: {}
-
   toad-cache@3.7.4: {}
 
   toidentifier@1.0.1: {}
@@ -3282,7 +3299,3 @@ snapshots:
       string-width: 7.2.0
       y18n: 5.0.8
       yargs-parser: 22.0.0
-
-  yuv-buffer@1.0.1: {}
-
-  yuv-canvas@1.3.0: {}

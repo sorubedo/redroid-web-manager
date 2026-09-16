@@ -1,9 +1,4 @@
-import type {
-  AdbFeature,
-  AdbIncomingSocketHandler,
-  AdbSocket,
-  AdbTransport,
-} from "@yume-chan/adb"
+import type { Adb, AdbFeature, AdbTransport } from "@yume-chan/adb"
 import { AdbReverseNotSupportedError, type AdbBanner } from "@yume-chan/adb"
 import { openAdbWebSocket, type AdbWebSocketLink } from "./websocket"
 
@@ -54,7 +49,7 @@ export class AdbWebSocketTransport implements AdbTransport {
     return this.#disconnected
   }
 
-  async connect(service: string): Promise<AdbSocket> {
+  async connect(service: string): Promise<Adb.Socket> {
     const link = openAdbWebSocket(this.#url(service))
     // 打不开就抛出去,让调用方(界面)拿到后端的原话。
     await link.opened
@@ -76,7 +71,7 @@ export class AdbWebSocketTransport implements AdbTransport {
   // 反向隧道(adb reverse)要在这边先监听一个端口,浏览器做不到。
   // scrcpy 发现 reverse 不行会退而求其次改用 forward 隧道,所以这不是死路。
   addReverseTunnel(
-    _handler: AdbIncomingSocketHandler,
+    _handler: Adb.IncomingSocketHandler,
     _address?: string
   ): never {
     throw new AdbReverseNotSupportedError()

@@ -115,16 +115,9 @@ export const DevicePanel = ({ container, onClose }: DevicePanelProps) => {
         opened = connected
         setAdb(connected)
 
-        const prop = async (key: string): Promise<string> =>
-          (
-            await connected.subprocess.noneProtocol.spawnWaitText([
-              "getprop",
-              key,
-            ])
-          ).trim()
         const [android, abi] = await Promise.all([
-          prop("ro.build.version.release"),
-          prop("ro.product.cpu.abi"),
+          connected.getProp("ro.build.version.release"),
+          connected.getProp("ro.product.cpu.abi"),
         ])
         if (!cancelled) setFacts({ android, abi })
 

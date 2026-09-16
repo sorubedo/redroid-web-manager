@@ -15,7 +15,7 @@ import path from "node:path"
  * 表都在变,版本对不上时是"能跑起来但画面不对"这种很难查的问题。前端那份
  * 在 web/src/adb/scrcpy.ts,两边一起改。
  */
-export const SCRCPY_VERSION = "3.3.3"
+export const SCRCPY_VERSION = "4.1"
 
 const DOWNLOAD_URL =
   "https://github.com/Genymobile/scrcpy/releases/download" +
@@ -27,7 +27,7 @@ const DOWNLOAD_URL =
  * 这个 jar 会被推到设备上、以 root 身份跑起来,所以"下到一半"和"被人换了
  * 一个"都得挡住。摘要不对就直接报错,别缓存,也别发给前端。
  */
-const SHA256 = "7e70323ba7f259649dd4acce97ac4fefbae8102b2c6d91e2e7be613fd5354be0"
+const SHA256 = "deacb991ed2509715160ffdc7907e47b4160eb30d1566217e9047fd5b8850cae"
 
 const CACHE_DIR = path.join(tmpdir(), "redroid-web-manager")
 const CACHE_PATH = path.join(CACHE_DIR, `scrcpy-server-v${SCRCPY_VERSION}`)
@@ -51,7 +51,7 @@ export interface ScrcpyServer {
 /**
  * 拿到 scrcpy 的 jar:本地有就用本地的,没有就下一份存下来。
  *
- * 存的地方是系统临时目录 —— 这个文件只有 90KB,丢了再下一次的代价可以忽略,
+ * 存的地方是系统临时目录 —— 这个文件七百多 KB,丢了再下一次的代价可以忽略,
  * 不值得为它引入"数据目录该放哪儿"这种配置。
  */
 export const readScrcpyServer = async (): Promise<ScrcpyServer> => {

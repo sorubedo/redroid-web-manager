@@ -1,9 +1,9 @@
 import type Docker from "dockerode"
-import { Adb, AdbDaemonTransport } from "@yume-chan/adb"
+import { Adb, adbDaemonAuthenticate } from "@yume-chan/adb"
 import { findRedroidAdbPort } from "../containers.js"
 import type { DockerEndpoint } from "../docker-host.js"
 import { connectAdbDaemon, type AdbTcpTarget } from "./connection.js"
-import { RedroidCredentialStore } from "./credentials.js"
+import { createCredentialManager } from "./credentials.js"
 
 /**
  * 每个容器一条到 adbd 的长连接,大家共用。
@@ -217,12 +217,12 @@ export class AdbSessions {
     const target: AdbTcpTarget = { host: this.#hostFor(bindAddress), port }
     const connection = await connectAdbDaemon(target)
 
-    const transport = await AdbDaemonTransport.authenticate({
+    const transport = await adbDaemonAuthenticate({
       // 这个名字只用来给人看(出错时的提示、以后界面上显示),Google 的 adb
       // 对 TCP 设备用的也是这个格式。
       serial: `${target.host}:${target.port}`,
       connection,
-      credentialStore: new RedroidCredentialStore(),
+      credentialManager: createCredentialManager(),
     })
 
     return new Adb(transport)

@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.10",
-    "@yume-chan/adb": "^2.6.4",
-    "@yume-chan/adb-scrcpy": "^2.3.2",
-    "@yume-chan/scrcpy": "^2.3.0",
-    "@yume-chan/scrcpy-decoder-webcodecs": "^2.5.3",
-    "@yume-chan/stream-extra": "^2.6.1",
+    "@yume-chan/adb": "^3.0.0-beta.2",
+    "@yume-chan/adb-scrcpy": "^3.0.0-beta.2",
+    "@yume-chan/scrcpy": "^3.0.0-beta.2",
+    "@yume-chan/scrcpy-decoder-webcodecs": "^3.0.0-beta.2",
+    "@yume-chan/stream-extra": "^3.0.0-beta.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

@@ -588,7 +588,7 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
     )
   })
 
-  // scrcpy 的服务端(一个 90KB 的 jar)。前端要把它推到设备上,所以这里
+  // scrcpy 的服务端(一个七百多 KB 的 jar)。前端要把它推到设备上,所以这里
   // 原样发给前端 —— 后端不碰设备,也不碰 scrcpy 协议。
   // 第一次调用时会去 GitHub 下一份并缓存,之后都走缓存。
   app.get("/api/scrcpy/server", async (request, reply) => {
