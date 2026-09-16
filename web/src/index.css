@@ -1,0 +1,334 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    system-ui,
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    sans-serif;
+  line-height: 1.6;
+  --line: color-mix(in srgb, currentColor 15%, transparent);
+  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+}
+
+body {
+  margin: 0;
+  padding: 2rem 1.5rem 4rem;
+}
+
+main {
+  max-width: 68rem;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+h4 {
+  font-size: 0.85rem;
+  margin: 1.25rem 0 0.5rem;
+  opacity: 0.7;
+  font-weight: 600;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.muted {
+  opacity: 0.6;
+  font-size: 0.88rem;
+}
+
+.warn {
+  color: color-mix(in srgb, red 75%, currentColor);
+}
+
+button {
+  font: inherit;
+  padding: 0.35rem 0.9rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.4rem 0.6rem;
+  opacity: 0.6;
+}
+
+.tabs button.active {
+  opacity: 1;
+  border-bottom-color: currentColor;
+  font-weight: 600;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+th {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.number {
+  text-align: right;
+}
+
+table.params {
+  font-size: 0.85rem;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.card > p {
+  margin: 0.35rem 0 0;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.badge.running,
+.badge.official {
+  border-color: color-mix(in srgb, green 55%, transparent);
+  color: color-mix(in srgb, green 65%, currentColor);
+}
+
+.badge.derived {
+  border-color: color-mix(in srgb, dodgerblue 55%, transparent);
+  color: color-mix(in srgb, dodgerblue 70%, currentColor);
+}
+
+.badge.created {
+  border-color: color-mix(in srgb, orange 55%, transparent);
+  color: color-mix(in srgb, orange 75%, currentColor);
+}
+
+.rows {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.75rem;
+}
+
+.row-label {
+  opacity: 0.6;
+}
+
+.failure,
+.empty {
+  margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+}
+
+.success {
+  margin: 1rem 0;
+  padding: 0.9rem 1.1rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, green 45%, transparent);
+}
+
+.success p {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+}
+
+.create-form {
+  margin-bottom: 1.5rem;
+}
+
+.field {
+  margin-top: 1rem;
+  border: none;
+  padding: 0;
+}
+
+.field > label,
+.field > legend {
+  display: block;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-bottom: 0.35rem;
+  padding: 0;
+}
+
+input[type="text"],
+input[type="number"],
+input:not([type]),
+select,
+textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  max-width: 32rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.35rem;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  background: transparent;
+  color: inherit;
+}
+
+textarea {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.check,
+.radios label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.check input,
+.radios input {
+  width: auto;
+  margin: 0;
+}
+
+.radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr));
+  gap: 0.7rem 2rem;
+}
+
+.param-row {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.param-row label {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.param-row input,
+.param-row select {
+  max-width: none;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+button.danger {
+  border-color: color-mix(in srgb, red 45%, transparent);
+  color: color-mix(in srgb, red 70%, currentColor);
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, red 40%, transparent);
+  font-size: 0.9rem;
+}
+
+.confirm > span:first-child {
+  flex: 1 1 20rem;
+}
+
+.failure {
+  border-color: color-mix(in srgb, red 45%, transparent);
+}
+
+.failure p,
+.empty p {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+}

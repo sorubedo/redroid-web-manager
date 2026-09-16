@@ -1,4 +1,14 @@
+packages:
+  - web
+
 allowBuilds:
   esbuild: true
+  # 下面三个是 dockerode 拖进来的,我们都不需要它们编译:
+  #   cpu-features / ssh2 —— 只有用 ssh:// 连远程 Docker 才需要,而它俩要编译原生代码
+  #   protobufjs —— 它本身没有安装期脚本(只有开发和发布用的),装下来就能用
+  # 以后要用 ssh:// 了,把 ssh2 改成 true 即可。
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
 minimumReleaseAgeExclude:
   - '@types/node@22.20.3'
