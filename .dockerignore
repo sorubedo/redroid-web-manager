@@ -1,0 +1,14 @@
+# 构建上下文里不需要的东西。这些一进去就会把镜像撑大,或者让宿主的
+# 状态泄漏进镜像。
+
+.git
+.github
+.code-server
+*.log
+README.md
+
+# 依赖和产物一律在容器里重新装、重新编译。
+node_modules
+**/node_modules
+dist
+**/dist

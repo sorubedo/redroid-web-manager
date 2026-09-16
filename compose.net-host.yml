@@ -1,0 +1,15 @@
+name: redroid-web-manager
+
+services:
+  redroid-web-manager:
+    image: ghcr.io/sorubedo/redroid-web-manager:latest
+    container_name: redroid-web-manager
+    network_mode: host
+    init: true
+    restart: unless-stopped
+    environment:
+      REDROID_WEB_HOST: "127.0.0.1"
+      REDROID_WEB_PORT: "3000"
+      TZ: Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
