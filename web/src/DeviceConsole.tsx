@@ -316,8 +316,6 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   /** 进"只剩画面":浏览器全屏 + 隐藏所有控件。全屏被拒也没关系,画面照样铺满。 */
   const enterScreenOnly = () => {
     setScreenOnly(true)
-    // 一句就走的话,用户不知道还能怎么出来。
-    setHint("按 Esc 退出全屏")
     void root.current?.requestFullscreen().catch(() => {})
   }
 
