@@ -87,7 +87,8 @@ const Tabs = ({
 export const App = () => {
   const [tab, setTab] = useState<Tab>("containers")
   // 控制台是整页的:开着的时候把管理台整个换掉,不是盖一层弹窗。
-  // 同时只开一台 —— adbd 同时只认一个客户端,开一堆只会互相挤。
+  // 一个页面只放一台 —— 整页布局就一个坑,也省得自己跟自己抢焦点。
+  // (不同的人、不同的页面同时看同一台容器是没问题的,各自一条 scrcpy 会话。)
   const [console, setConsole] = useState<RedroidContainer | null>(null)
   const { theme, toggle } = useTheme()
 

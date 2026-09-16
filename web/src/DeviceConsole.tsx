@@ -115,7 +115,8 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       try {
         const connected = await connectContainer(container.name)
         // StrictMode 下这个 effect 会跑两次,第一次的结果要扔掉 —— 不然会
-        // 留下一条没人关的连接,而 adbd 同时只认一个客户端。
+        // 留下一条没人关的连接(后端那条到 adbd 的连接是所有会话共用的,
+        // 浏览器这边漏掉一条,设备上就多一个白跑的 scrcpy 进程)。
         if (cancelled) {
           connected.close()
           return

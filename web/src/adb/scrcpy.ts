@@ -8,6 +8,7 @@ import {
   AndroidMotionEventAction,
   AndroidMotionEventButton,
   DefaultServerPath,
+  ScrcpyInstanceId,
   ScrcpyPointerId,
 } from "@yume-chan/scrcpy"
 import {
@@ -18,18 +19,16 @@ import {
 } from "@yume-chan/scrcpy-decoder-webcodecs"
 import { ApiFailure } from "../api"
 
-/**
- * 浏览器里的 scrcpy 客户端。
- *
- * 一条完整链路是:推 scrcpy-server 到设备 -> 用 app_process 起它 -> 连它开
- * 的三个 socket(视频/控制)-> 把视频流喂给 WebCodecs 解码 -> 画到 canvas
- * 上;手指的动作反过来编成控制消息发回去。
- *
- * 这些 socket 全都走前面那条 WebSocket 通道,所以后端只看到字节。
- * scrcpy 默认走 `adb reverse`(要客户端先在本机监听一个端口),浏览器做不到,
- * Tango 发现 reverse 不被支持会自动改用 forward 隧道 —— 也就是直接连设备上
- * 的 `localabstract:scrcpy`,正好是我们要的。
- */
+// 浏览器里的 scrcpy 客户端。
+//
+// 一条完整链路是:推 scrcpy-server 到设备 -> 用 app_process 起它 -> 连它开
+// 的三个 socket(视频/控制)-> 把视频流喂给 WebCodecs 解码 -> 画到 canvas
+// 上;手指的动作反过来编成控制消息发回去。
+//
+// 这些 socket 全都走前面那条 WebSocket 通道,所以后端只看到字节。
+// scrcpy 默认走 `adb reverse`(要客户端先在本机监听一个端口),浏览器做不到,
+// Tango 发现 reverse 不被支持会自动改用 forward 隧道 —— 也就是直接连设备上
+// 的 socket,正好是我们要的。
 
 /** 必须和 src/scrcpy-server.ts 里的版本一致。 */
 const SCRCPY_VERSION = "4.1"
@@ -54,6 +53,53 @@ export class ScrcpyUnsupported extends Error {
   }
 }
 
+/**
+ * 起一个 scrcpy 会话:推 jar、拉起 server、连上它的视频流。
+ *
+ * 到这一步为止都不需要浏览器(解码才需要),所以单独拆出来 —— Node 里也能
+ * 直接用它验证并发这类事。
+ */
+export const startScrcpySession = async (adb: Adb) => {
+  const jar = await fetchServerJar()
+
+  // 每个会话一个 scid。scrcpy 用它给 socket 起名(localabstract:scrcpy_xxxxxxxx);
+  // 不指定的话所有实例都绑同一个名字,同时打开时后一个会直接
+  // `Address already in use` 退出 —— 于是多个页面只是接到了同一个 server 的
+  // 流上:看着"也行",但同一瞬间点两下就有一个打不开。
+  const scid = ScrcpyInstanceId.random()
+  const scidHex = scid.value.toString(16).padStart(8, "0")
+
+  // jar 也按会话分开:同一个文件被两个会话同时写会串(ADB 的 sync 不是原子的)。
+  // server 退出时会删掉自己那一份(路径是它从 classpath 推出来的),不会攒垃圾。
+  const serverPath = DefaultServerPath.replace(/\.jar$/, `-${scidHex}.jar`)
+  await AdbScrcpyClient.pushServer(adb, jar, serverPath)
+
+  const client = await AdbScrcpyClient.start(
+    adb,
+    serverPath,
+    new AdbScrcpyOptionsLatest({
+      video: true,
+      // 声音先不要:浏览器这边要额外接一个解码器和播放器,而且容器里
+      // 那台"手机"多数时候也没人听。
+      audio: false,
+      control: true,
+      // 4.1 把编码格式做成了必填项(以前有默认值)。
+      videoCodec: "h264",
+      maxSize: DEFAULT_MAX_SIZE,
+      videoBitRate: VIDEO_BIT_RATE,
+      scid,
+    })
+  )
+
+  const video = await client.videoStream
+  if (video === undefined) {
+    await client.close()
+    throw new Error("scrcpy 没有给出视频流")
+  }
+
+  return { client, video }
+}
+
 export class ScrcpyScreen {
   /** 这个浏览器能不能解视频。解不了就别开这个界面了。 */
   static get isSupported(): boolean {
@@ -67,34 +113,13 @@ export class ScrcpyScreen {
       )
     }
 
-    const jar = await fetchServerJar()
-    // 七百多 KB,每次会话推一遍。设备重启会清掉 /data/local/tmp,为省这点流量
-    // 去做"文件在不在"的判断不值当。
-    await AdbScrcpyClient.pushServer(adb, jar)
-
-    const client = await AdbScrcpyClient.start(
-      adb,
-      DefaultServerPath,
-      new AdbScrcpyOptionsLatest({
-        video: true,
-        // 声音先不要:浏览器这边要额外接一个解码器和播放器,而且容器里
-        // 那台"手机"多数时候也没人听。
-        audio: false,
-        control: true,
-        // 4.1 把编码格式做成了必填项(以前有默认值)。
-        videoCodec: "h264",
-        maxSize: DEFAULT_MAX_SIZE,
-        videoBitRate: VIDEO_BIT_RATE,
-      })
-    )
-
-    const video = await client.videoStream
-    if (video === undefined) throw new Error("scrcpy 没有给出视频流")
+    const { client, video } = await startScrcpySession(adb)
 
     // WebGL 那条路要 GPU,拿不到就退回 2D 画布。两者的接口一样。
-    const renderer: CanvasVideoFrameRenderer = WebGLVideoFrameRenderer.isSupported
-      ? new WebGLVideoFrameRenderer()
-      : new BitmapVideoFrameRenderer()
+    const renderer: CanvasVideoFrameRenderer =
+      WebGLVideoFrameRenderer.isSupported
+        ? new WebGLVideoFrameRenderer()
+        : new BitmapVideoFrameRenderer()
     const decoder = new WebCodecsVideoDecoder({
       codec: video.metadata.codec,
       renderer,
@@ -212,9 +237,9 @@ export class ScrcpyScreen {
    * 让设备转 90 度。
    *
    * 这是 scrcpy 的"请设备旋转"控制消息:它冻结当前显示方向并换成另一个。
-   * **是不是立刻看得见,取决于当前在前台的应用**:锁竖屏的界面(桌面、
-   * 设置之类)不会跟着转,打开支持横屏的应用(相册、视频)就能看到画面转
-   * 过去。这和按设备上的自动旋转键是一回事,不是这个按钮的毛病。
+   * 是不是立刻看得见取决于当前在前台的应用 —— 锁竖屏的界面(桌面、设置)
+   * 不会跟着转,支持横屏的应用(相册、视频)会。和按设备上的自动旋转键
+   * 是一回事,不是这个按钮的毛病。
    */
   rotate(): void {
     const controller = this.#client.controller
@@ -261,7 +286,9 @@ const fetchServerJar = async (): Promise<
     const body: unknown = await response.json().catch(() => null)
     const detail = body as { message?: unknown; hint?: unknown } | null
     throw new ApiFailure(
-      typeof detail?.message === "string" ? detail.message : "拿不到 scrcpy 的 server",
+      typeof detail?.message === "string"
+        ? detail.message
+        : "拿不到 scrcpy 的 server",
       typeof detail?.hint === "string" ? detail.hint : ""
     )
   }
