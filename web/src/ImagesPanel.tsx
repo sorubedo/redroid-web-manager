@@ -11,6 +11,7 @@ import {
 } from "./api"
 import { CheckCircle, Layers, Plus, Spinner, Trash, X } from "./icons"
 import { CreateContainerForm } from "./CreateContainerForm"
+import { OfficialImages } from "./OfficialImages"
 import {
   Badge,
   Button,
@@ -277,8 +278,8 @@ export const ImagesPanel = () => {
           icon={<Layers className="size-5" />}
           title="没有找到能用的 redroid 镜像"
         >
-          <p>先拉一张官方的:</p>
-          <CommandBlock command="docker pull redroid/redroid:14.0.0_64only-latest" />
+          <p>下面「官方镜像」里挑一张点「拉取」就行。要在命令行里拉也可以:</p>
+          <CommandBlock command="docker pull redroid/redroid:16.0.0_64only-latest" />
           <p className="text-xs text-faint">
             标签是 <code>&lt;Android 版本&gt;[_64only]-latest</code>,
             <code>_64only</code> 表示只有 64 位运行库的精简版。
@@ -341,6 +342,16 @@ export const ImagesPanel = () => {
             reload()
           }}
           onCancel={() => setCreating(null)}
+        />
+      )}
+
+      {/* 本机有什么是上面那张表,外面有什么是这里 —— 拉完让上面那张表刷新。 */}
+      {/* 本机列表都读不到的时候,这一块只会把同一句错误再说一遍(它也要连
+          后端、也要连 Docker),所以干脆不出现。 */}
+      {failure === null && (
+        <OfficialImages
+          local={(data ?? []).map((image) => image.reference)}
+          onPulled={reload}
         />
       )}
     </>

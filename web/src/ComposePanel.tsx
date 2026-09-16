@@ -131,12 +131,12 @@ export const ComposePanel = () => {
         images.data.length === 0 && (
           <EmptyState
             icon={<Layers className="size-5" />}
-            title="本机没有原版 redroid 镜像,没得选"
-          >
-            <p>先拉一张:</p>
-            <CommandBlock command="docker pull redroid/redroid:14.0.0_64only-latest" />
-          </EmptyState>
-        )}
+          title="本机没有原版 redroid 镜像,没得选"
+        >
+          <p>先去「镜像」那一页的「官方镜像」里点一下「拉取」,或者手动拉:</p>
+          <CommandBlock command="docker pull redroid/redroid:16.0.0_64only-latest" />
+        </EmptyState>
+      )}
 
       {images.data !== null && images.data.length > 0 && (
         <div className="grid items-start gap-5 lg:grid-cols-2">

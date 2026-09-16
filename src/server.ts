@@ -36,6 +36,13 @@ import {
   removeRedroidImage,
 } from "./images.js"
 import { REDROID_PARAMETERS } from "./redroid-params.js"
+import {
+  NotAnOfficialImage,
+  PullFailed,
+  RegistryUnavailable,
+  listOfficialImages,
+  pullOfficialImage,
+} from "./remote-images.js"
 
 // 上传的每个 tar 最大多少。这些内容会先整个读进内存再拼成构建上下文,
 // 所以必须有上限 —— 不然一次大上传就能把后端进程撑爆。
@@ -100,6 +107,31 @@ const describeFailure = (
       },
     }
   }
+  // 问不到 Docker Hub:后端能跑,只是这台机器上不了外网(或者被限流了)。
+  // 和 DockerFailure 一样是"依赖不可用",所以也是 503。
+  if (error instanceof RegistryUnavailable) {
+    return {
+      status: 503,
+      body: { message: error.message, hint: error.hint },
+    }
+  }
+  if (error instanceof NotAnOfficialImage) {
+    return {
+      status: 400,
+      body: {
+        message: error.message,
+        hint: "拉取只对官方仓库开放,列表里挑一张就行。",
+      },
+    }
+  }
+  // 拉取中途 Docker 失败了。响应头早就发出去了(那是个流),这里的错误
+  // 会作为最后一行 error 事件给前端。
+  if (error instanceof PullFailed) {
+    return {
+      status: 500,
+      body: { message: error.message, hint: error.hint },
+    }
+  }
   if (error instanceof InvalidContainerSpec) {
     return {
       status: 400,
@@ -159,6 +191,47 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   const imageReference = (request: FastifyRequest): string =>
     (request.params as { reference: string }).reference
 
+  // 「边跑边说」的接口骨架:先把响应头定下来,然后一行行往外写 JSON,最后
+  // 一定收尾。拉镜像和合成镜像是同一个形状 —— 它们都是"跑几分钟、过程中
+  // 有进度、最后给个结果",所以响应头、错误翻译、收尾只写这一份。
+  //
+  // 这里不能用上面那个 handler 包装:那套是"要么一个结果,要么一个错误"。
+  const streamNdjson = async (
+    reply: FastifyReply,
+    run: (send: (payload: unknown) => void) => Promise<void>
+  ): Promise<void> => {
+    reply.hijack()
+    reply.raw.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache",
+    })
+
+    // 用户中途关掉页面、连接断了之后,再往里写会变成 socket 错误。那不是
+    // "服务出错",只是没人听了 —— 当它没发生,send 直接空转。
+    reply.raw.on("error", () => {})
+    const send = (payload: unknown) => {
+      if (reply.raw.writableEnded || reply.raw.destroyed) return
+      reply.raw.write(`${JSON.stringify(payload)}\n`)
+    }
+
+    try {
+      await run(send)
+    } catch (error) {
+      const described = describeFailure(error)
+      const body = (described?.body ?? {
+        message: error instanceof Error ? error.message : String(error),
+        hint: "",
+      }) as { readonly message?: string; readonly hint?: string }
+      send({
+        type: "error",
+        message: body.message ?? "未知错误",
+        hint: body.hint ?? "",
+      })
+    } finally {
+      if (!reply.raw.writableEnded && !reply.raw.destroyed) reply.raw.end()
+    }
+  }
+
   app.get("/api/health", () => ({ ok: true }))
 
   // 原版镜像 —— 用来选一张基础镜像去叠 Magisk。
@@ -171,6 +244,13 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   app.get(
     "/api/images/usable",
     handler(async () => ({ images: await listUsableImages(docker, endpoint) }))
+  )
+
+  // Docker Hub 上的官方镜像列表。这一步要出网,拿不到就是 503,
+  // 和"本机 Docker 读不到"分开报 —— 两件事的对策不一样。
+  app.get(
+    "/api/images/official",
+    handler(async () => ({ images: await listOfficialImages(docker, endpoint) }))
   )
 
   // 删掉一张镜像(按标签)。还挂着容器的话 Docker 会拦,那是 409 ——
@@ -204,23 +284,10 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   app.get("/api/redroid-params", () => ({ parameters: REDROID_PARAMETERS }))
 
   // 镜像合成台:收下基础镜像、输出标签和若干个 tar,交给 Docker 构建。
-  //
-  // 这个接口是**流式**的:响应一开头就定下来,然后一行行往外写 JSON,前端
-  // 边收边显示构建日志。正因为要边跑边说,它不能用上面那个 handler 包装
-  // (那套是"要么一个结果,要么一个错误")。
-  app.post("/api/compose", async (request, reply) => {
-    reply.hijack()
-    reply.raw.writeHead(200, {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache",
-    })
-
-    const send = (payload: unknown) => {
-      reply.raw.write(`${JSON.stringify(payload)}\n`)
-    }
-    const log = (message: string) => send({ type: "log", message })
-
-    try {
+  // 边构建边把日志推给前端,所以走 streamNdjson。
+  app.post("/api/compose", (request, reply) =>
+    streamNdjson(reply, async (send) => {
+      const log = (message: string) => send({ type: "log", message })
       const layers: ComposeLayer[] = []
       let base = ""
       let target = ""
@@ -245,21 +312,24 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
         log
       )
       send({ type: "done", target: result.target, imageId: result.imageId })
-    } catch (error) {
-      const described = describeFailure(error)
-      const body = (described?.body ?? {
-        message: error instanceof Error ? error.message : String(error),
-        hint: "",
-      }) as { message?: string; hint?: string }
-      send({
-        type: "error",
-        message: body.message ?? "未知错误",
-        hint: body.hint ?? "",
-      })
-    } finally {
-      reply.raw.end()
-    }
-  })
+    })
+  )
+
+  // 拉一张官方镜像。拉几个 G 要好几分钟,所以进度得边拉边推 —— 同样是
+  // streamNdjson,一行 layer 就是一层 blob 的进度。
+  app.post("/api/images/pull", (request, reply) =>
+    streamNdjson(reply, async (send) => {
+      const reference = (request.body as { reference?: unknown } | null)
+        ?.reference
+      const pulled = await pullOfficialImage(
+        docker,
+        endpoint,
+        reference,
+        send
+      )
+      send({ type: "done", reference: pulled })
+    })
+  )
 
   app.post(
     "/api/containers/:id/start",

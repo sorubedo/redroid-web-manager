@@ -146,6 +146,13 @@ export const Upload = (props: IconProps) => (
   </Svg>
 )
 
+export const Download = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M12 3.5V15m0 0 4-4m-4 4-4-4" />
+    <path d="M4.5 15v3.5A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5V15" />
+  </Svg>
+)
+
 export const Sliders = (props: IconProps) => (
   <Svg {...props}>
     <path d="M5 6h14M5 12h14M5 18h14" />

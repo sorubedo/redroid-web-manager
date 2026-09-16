@@ -42,7 +42,8 @@ export const Button = ({
     type="button"
     {...rest}
     className={cx(
-      "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium transition disabled:pointer-events-none disabled:opacity-45",
+      // 按钮里的字不换行:挤到换行看着像坏了,而且高度是定的,换行会溢出。
+      "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition disabled:pointer-events-none disabled:opacity-45",
       size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
       BUTTON_TONES[tone],
       className

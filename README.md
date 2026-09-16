@@ -1,8 +1,8 @@
 # redroid-web-manager
 
-管理本机 Docker 里 redroid 容器的网页界面:看/删镜像、建容器、起停删容器、
-把 tar 层叠成新镜像。后端是一个 Fastify 服务,前端是 React + Tailwind 的
-静态页面。
+管理本机 Docker 里 redroid 容器的网页界面:看/拉/删镜像、建容器、起停删
+容器、把 tar 层叠成新镜像。后端是一个 Fastify 服务,前端是 React + Tailwind
+的静态页面。
 
 ## 快速开始
 
@@ -111,6 +111,17 @@ docker run -d --name redroid-web \
 
 这时容器里的监听地址就是宿主机的监听地址,保持默认的 `127.0.0.1` 即可。
 注意 host 模式下容器里 `DOCKER_HOST` 别再指向本机 —— 它和宿主共用网络栈。
+
+## 拉官方镜像
+
+「镜像」页下半部分是 Docker Hub 上 `redroid/redroid` 的官方 `-latest` 标签
+(`<Android 版本>[_64only]-latest`),点「拉取」就由本机的 Docker daemon 去拉,
+进度(整条 + 每层 blob)边拉边显示,拉完直接就能拿它创建容器。已经在的标签
+会标成「已在本机」。
+
+这个列表是后端去 `hub.docker.com` 拿的,所以要**能出网**。拿不到只是这一块
+显示不出来,本机已有的镜像照常用;也可以用页面上的 `docker pull` 提示手动拉。
+拉取本身走 Docker daemon,和你手动敲 `docker pull` 是同一条路。
 
 ## 关于 adb 端口
 

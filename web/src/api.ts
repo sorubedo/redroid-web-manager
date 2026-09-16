@@ -163,6 +163,32 @@ export const fetchBaseImages = async (): Promise<
 }
 
 /**
+ * Docker Hub 上 redroid 官方仓库的标签列表。后端要出网才拿得到,
+ * 拿不到会回一句人话(503),前端照常显示错误框。
+ */
+export const fetchOfficialImages = async (): Promise<
+  ReadonlyArray<OfficialImage>
+> => {
+  const body = (await getJson("/api/images/official")) as {
+    images?: ReadonlyArray<OfficialImage>
+  }
+  return body.images ?? []
+}
+
+export interface OfficialImage {
+  /** 例:redroid/redroid:16.0.0_64only-latest */
+  readonly reference: string
+  /** 例:16.0.0 */
+  readonly version: string
+  /** 名字里带 _64only:只有 64 位运行库的精简版 */
+  readonly only64: boolean
+  /** 字节数,后端挑的是宿主机架构那一份 */
+  readonly size: number
+  readonly architectures: ReadonlyArray<string>
+  readonly updatedAt: string
+}
+
+/**
  * 从本机删掉一张镜像。传的是标签那种引用(redroid/redroid:xxx),引用里有
  * `/` 和 `:`,所以整段要编码后再塞进路径。
  *
@@ -264,23 +290,52 @@ export interface ComposeEvent {
   readonly imageId?: string | null
 }
 
-// 把构建请求发出去,并把后端边跑边推过来的行交给 onEvent。
+/**
+ * 拉镜像时后端推回来的一行。
+ *
+ * layer 是某一层(blob)的进度 —— Docker 是一层一层报的,界面上那几条进度
+ * 条就是它;log 是没主的那些话。
+ */
+export interface PullEvent {
+  readonly type: "layer" | "log" | "done" | "error"
+  readonly id?: string
+  readonly status?: string
+  readonly current?: number
+  readonly total?: number
+  readonly message?: string
+  readonly hint?: string
+  readonly reference?: string
+}
+
+// 后端那几个「边跑边推」的接口(合成镜像、拉镜像)形状是一样的:POST 出去,
+// 响应是一串 NDJSON,一行一个 JSON。所以发请求和按行切开只写一份。
 //
-// 这里不用 fetch().json(),因为响应是**流**:整个构建过程会持续往里写,
-// 前端要边收边显示。普通 fetch 会把响应读完才返回,那样日志就变成构建结束
-// 后一次性冒出来了。
-export const composeImage = async (
-  form: FormData,
-  onEvent: (event: ComposeEvent) => void
-): Promise<void> => {
+// 这里不用 fetch().json(),因为响应是**流**:整个过程会持续往里写,前端要
+// 边收边显示。普通 fetch 会把响应读完才返回,那样进度就变成结束之后一次性
+// 冒出来了。
+const openStream = async (
+  path: string,
+  body: BodyInit,
+  headers?: Record<string, string>
+): Promise<Response> => {
   let response: Response
   try {
-    response = await fetch("/api/compose", { method: "POST", body: form })
+    response = await fetch(path, {
+      method: "POST",
+      ...(headers === undefined ? {} : { headers }),
+      body,
+    })
   } catch {
     throw new ApiFailure(OFFLINE_MESSAGE, OFFLINE_HINT)
   }
   if (!response.ok) throw await failureOf(response)
+  return response
+}
 
+const readStream = async <E extends { readonly type: string }>(
+  response: Response,
+  onEvent: (event: E) => void
+): Promise<void> => {
   const reader = response.body?.getReader()
   if (reader === undefined) {
     throw new ApiFailure("这个浏览器读不了流式响应", "换一个现代浏览器试试。")
@@ -293,9 +348,10 @@ export const composeImage = async (
     const text = line.trim()
     if (text === "") return
     try {
-      onEvent(JSON.parse(text) as ComposeEvent)
+      onEvent(JSON.parse(text) as E)
     } catch {
-      onEvent({ type: "log", message: text })
+      // 解析不了就原样当一行日志 —— 两个接口的 log 事件都是这个形状。
+      onEvent({ type: "log", message: text } as unknown as E)
     }
   }
 
@@ -311,4 +367,31 @@ export const composeImage = async (
     }
   }
   emit(buffered)
+}
+
+/** 把合成请求发出去,并把后端边跑边推过来的行交给 onEvent。 */
+export const composeImage = async (
+  form: FormData,
+  onEvent: (event: ComposeEvent) => void
+): Promise<void> => {
+  const response = await openStream("/api/compose", form)
+  await readStream<ComposeEvent>(response, onEvent)
+}
+
+/**
+ * 拉一张官方镜像,边拉边把进度交给 onEvent。
+ *
+ * 拉几个 G 要好几分钟,所以这一步也是流式的:后端一直在往外推,前端才有
+ * 进度条可看。拉完(或者出错)才 resolve。
+ */
+export const pullOfficialImage = async (
+  reference: string,
+  onEvent: (event: PullEvent) => void
+): Promise<void> => {
+  const response = await openStream(
+    "/api/images/pull",
+    JSON.stringify({ reference }),
+    { "Content-Type": "application/json" }
+  )
+  await readStream<PullEvent>(response, onEvent)
 }
