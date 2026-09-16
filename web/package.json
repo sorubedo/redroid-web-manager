@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.10",
+    "@yume-chan/adb": "^2.6.4",
+    "@yume-chan/stream-extra": "^2.6.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

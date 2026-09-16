@@ -12,7 +12,8 @@ import {
   type ContainerParam,
   type RedroidContainer,
 } from "./api"
-import { Box, Play, Spinner, Stop, Trash } from "./icons"
+import { DevicePanel } from "./DevicePanel"
+import { Box, Play, Screen, Spinner, Stop, Trash } from "./icons"
 import {
   Badge,
   Button,
@@ -95,6 +96,7 @@ interface CardProps {
   readonly onStart: () => void
   readonly onStop: () => void
   readonly onRemove: () => void
+  readonly onOpenScreen: () => void
 }
 
 const ContainerCard = ({
@@ -104,6 +106,7 @@ const ContainerCard = ({
   onStart,
   onStop,
   onRemove,
+  onOpenScreen,
 }: CardProps) => {
   const [confirming, setConfirming] = useState<"stop" | "remove" | null>(null)
   const busy = busyLabel !== null
@@ -270,6 +273,12 @@ const ContainerCard = ({
       <div className="mt-auto flex items-center gap-2 border-t border-line pt-4">
         {confirming === null ? (
           <>
+            {running && container.adbPort !== null && (
+              <Button tone="primary" disabled={busy} onClick={onOpenScreen}>
+                <Screen className="size-4" />
+                看屏幕
+              </Button>
+            )}
             {running ? (
               <Button
                 tone={stopDeletes ? "danger" : "default"}
@@ -341,6 +350,10 @@ export const ContainersPanel = () => {
     readonly message: string
     readonly hint: string
   } | null>(null)
+
+  // 打开设备视图的那台容器。同时只开一台 —— adbd 同时只认一个客户端,
+  // 开一堆只会互相挤。
+  const [opened, setOpened] = useState<RedroidContainer | null>(null)
 
   const act = async (id: string, label: string, run: () => Promise<void>) => {
     setWorking({ id, label })
@@ -419,9 +432,14 @@ export const ContainersPanel = () => {
                   removeContainer(container.id)
                 )
               }
+              onOpenScreen={() => setOpened(container)}
             />
           ))}
         </div>
+      )}
+
+      {opened !== null && (
+        <DevicePanel container={opened} onClose={() => setOpened(null)} />
       )}
     </>
   )

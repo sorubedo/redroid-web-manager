@@ -221,6 +221,30 @@ export const stopContainer = (id: string): Promise<void> =>
 export const removeContainer = (id: string): Promise<void> =>
   send("DELETE", `/api/containers/${encodeURIComponent(id)}`).then(() => undefined)
 
+/**
+ * 容器里那台 Android 的握手信息。
+ *
+ * 浏览器自己连不到 adbd,这些东西(单包上限、有哪些 feature)只能由后端
+ * 在握手时问出来再转告 —— 前端要靠它才能造出一个 Adb 实例。
+ * 字段可能缺,因为 JSON 里 undefined 会整个消失。
+ */
+export interface AdbDeviceInfo {
+  readonly serial: string
+  readonly maxPayloadSize: number
+  readonly clientFeatures: ReadonlyArray<string>
+  readonly banner: {
+    readonly product?: string
+    readonly model?: string
+    readonly device?: string
+    readonly features: ReadonlyArray<string>
+  }
+}
+
+export const fetchAdbInfo = (id: string): Promise<AdbDeviceInfo> =>
+  getJson(
+    `/api/containers/${encodeURIComponent(id)}/adb`
+  ) as Promise<AdbDeviceInfo>
+
 /** redroid 官方文档里的参数表。创建表单是照着它生成的。 */
 export const fetchRedroidParams = async (): Promise<
   ReadonlyArray<RedroidParameter>

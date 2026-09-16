@@ -55,6 +55,14 @@ export const Refresh = (props: IconProps) => (
   </Svg>
 )
 
+/** 一块屏幕。用来表示"看这台容器的画面"。 */
+export const Screen = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="3" y="4" width="18" height="13" rx="2" />
+    <path d="M9 21h6M12 17v4" />
+  </Svg>
+)
+
 export const Play = (props: IconProps) => (
   <Svg {...props}>
     <path d="M7 4.6 19 12 7 19.4V4.6Z" />
