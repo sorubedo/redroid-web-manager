@@ -141,6 +141,35 @@ docker inspect -f '{{json .HostConfig.PortBindings}}' <容器名>
 Docker daemon,所以不管它自己在哪跑,拿到的都是宿主上的占用情况;宿主机上
 非 Docker 进程占的端口它看不到,那种情况会在启动容器时报错)。
 
+## 在浏览器里看画面(scrcpy)
+
+容器卡片上的「看屏幕」会在浏览器里开一个 scrcpy 会话:画面、触摸、滚轮、
+键盘都直接对着容器里的 Android。**不需要装 adb,也不需要 platform-tools**
+—— 后端自己用 Tango(ADB 协议的 TypeScript 实现)直连容器的 adbd。
+
+链路是这样的(全程只有你那个 HTTP 端口):
+
+```
+浏览器(跑 Tango 和 scrcpy 客户端)
+  │  WebSocket,一条对应设备上一条 ADB socket
+  ▼
+后端(只搬字节,不解释 ADB)
+  │  TCP 到容器的 5555
+  ▼
+容器里的 adbd
+```
+
+后端和容器之间只有一条 ADB 连接,所有人共用(设备上的 adbd 同时只认一个
+客户端)。最后一个用的人走了之后 30 秒放开,免得你手动 `adb connect` 时挤不
+进去。后端自己跑在容器里的话,用 `REDROID_WEB_ADB_HOST` 告诉它宿主在哪。
+
+scrcpy 的服务端是一个 90KB 的 jar,后端第一次用的时候从 GitHub 下一份
+(校验 sha256)缓存起来,前端每次会话把它推到容器里。所以**第一次用需要能
+出网**;下不下来时页面上会说明。
+
+画面要求浏览器支持 WebCodecs(Chrome / Edge 这类)。解不了的时候面板会直接
+说,不会给你一块黑屏。
+
 ## 目录结构
 
 ```

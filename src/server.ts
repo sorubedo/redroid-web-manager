@@ -49,6 +49,10 @@ import {
   listOfficialImages,
   pullOfficialImage,
 } from "./remote-images.js"
+import {
+  ScrcpyServerUnavailable,
+  readScrcpyServer,
+} from "./scrcpy-server.js"
 
 // 上传的每个 tar 最大多少。这些内容会先整个读进内存再拼成构建上下文,
 // 所以必须有上限 —— 不然一次大上传就能把后端进程撑爆。
@@ -128,6 +132,13 @@ const describeFailure = (
         message: error.message,
         hint: "容器可能还在启动(Android 起来要十几秒),等会儿再试;一直这样就看容器的日志。",
       },
+    }
+  }
+  // scrcpy 的 jar 下不下来。这个后端自己还能跑,缺的是外网,所以也是 503。
+  if (error instanceof ScrcpyServerUnavailable) {
+    return {
+      status: 503,
+      body: { message: error.message, hint: error.hint },
     }
   }
   if (error instanceof ImageNotFound) {
@@ -575,6 +586,24 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
         })()
       }
     )
+  })
+
+  // scrcpy 的服务端(一个 90KB 的 jar)。前端要把它推到设备上,所以这里
+  // 原样发给前端 —— 后端不碰设备,也不碰 scrcpy 协议。
+  // 第一次调用时会去 GitHub 下一份并缓存,之后都走缓存。
+  app.get("/api/scrcpy/server", async (request, reply) => {
+    try {
+      const { version, jar } = await readScrcpyServer()
+      reply.header("X-Scrcpy-Version", version)
+      // 前端每次会话都可能来取,而内容按版本号是不变的,让它自己缓存。
+      reply.header("Cache-Control", "no-cache")
+      return await reply.type("application/java-archive").send(jar)
+    } catch (error) {
+      const described = describeFailure(error)
+      if (described === null) throw error
+      reply.status(described.status)
+      return described.body
+    }
   })
 
   // 前端页面。放在所有 API 路由后面注册,免得静态路由先把手伸到 /api 上。
