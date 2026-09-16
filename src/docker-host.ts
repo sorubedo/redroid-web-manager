@@ -64,14 +64,24 @@ export const describeDockerEndpoint = (endpoint: DockerEndpoint): string =>
     : `tcp://${endpoint.host}:${endpoint.port}`
 
 /**
- * 决定这次到底连哪儿。优先级:命令行 > 环境变量 > 默认值。
+ * 决定这次到底连哪儿。优先级:命令行 > 带前缀的环境变量 > DOCKER_HOST > 默认值。
+ *
+ * 带前缀的那个(REDROID_WEB_DOCKER_HOST)排前面,是因为它明确写着"这是给
+ * 这个程序用的";裸的 DOCKER_HOST 是 Docker 生态的公共约定,继续支持,
+ * 但会让路 —— 万一你机器上它正被 docker 命令行用着,你还能单独给这个程序
+ * 指个别的 daemon。
+ *
  * 空字符串当没写(不然 DOCKER_HOST="" 会变成一个诡异的错误)。
  */
 export const resolveDockerHost = (options: {
   readonly fromCli: string | undefined
   readonly env: Record<string, string | undefined>
 }): string => {
-  const candidates = [options.fromCli, options.env["DOCKER_HOST"]]
+  const candidates = [
+    options.fromCli,
+    options.env["REDROID_WEB_DOCKER_HOST"],
+    options.env["DOCKER_HOST"],
+  ]
   for (const candidate of candidates) {
     if (candidate !== undefined && candidate.trim() !== "") {
       return candidate.trim()

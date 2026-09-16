@@ -64,6 +64,13 @@ export interface RedroidContainer {
   readonly autoRemove: boolean
   /** 宿主端口 -> 容器里的 5555(adb);没映射就是 null */
   readonly adbPort: number | null
+  /**
+   * 上面那个端口绑在宿主哪个地址上。
+   *
+   * 老容器(这个程序还没管绑定地址时建的)会是 "0.0.0.0" —— Docker 对空
+   * HostIp 就是这个意思。界面上要把它标出来:adb 没鉴权,那就是对全网开着。
+   */
+  readonly adbBindAddress: string | null
   /** /data 挂到哪儿了;没挂就是 null(不挂的话容器一删数据就没了) */
   readonly dataMount: DataMount | null
   /** 命令行里带的 redroid 参数 */
@@ -127,6 +134,10 @@ export const listRedroidContainers = async (
       privileged: inspect.HostConfig?.Privileged === true,
       autoRemove: inspect.HostConfig?.AutoRemove === true,
       adbPort: adbPortOf(inspect.NetworkSettings, inspect.HostConfig),
+      adbBindAddress: adbBindAddressOf(
+        inspect.NetworkSettings,
+        inspect.HostConfig
+      ),
       dataMount: dataMountOf(inspect.Mounts),
       params,
     })
@@ -322,6 +333,40 @@ const adbPortOf = (
   const actual = networkSettings?.Ports?.["5555/tcp"]?.[0]?.HostPort
   const requested = hostConfig?.PortBindings?.["5555/tcp"]?.[0]?.HostPort
   return parsePort(actual) ?? parsePort(requested)
+}
+
+/**
+ * adb 端口绑在宿主的哪个地址上。
+ *
+ * 同样两个地方都要看(理由见上面),并且要把 Docker 的几种"没写"翻译成
+ * 它实际的语义:HostIp 是空字符串(或 IPv6 的 "::")时,Docker 绑的是所有
+ * 网卡 —— 直接显示成空字符串,用户看不出这是"对全网开放"。
+ */
+const adbBindAddressOf = (
+  networkSettings:
+    | {
+        readonly Ports?: Readonly<
+          Record<string, ReadonlyArray<{ HostIp?: string }> | null>
+        >
+      }
+    | undefined,
+  hostConfig:
+    | {
+        readonly PortBindings?: Readonly<
+          Record<string, ReadonlyArray<{ HostIp?: string }> | null>
+        >
+      }
+    | undefined
+): string | null => {
+  const actual = networkSettings?.Ports?.["5555/tcp"]?.[0]?.HostIp
+  const requested = hostConfig?.PortBindings?.["5555/tcp"]?.[0]?.HostIp
+  const raw = actual ?? requested
+  if (raw === undefined) return null
+
+  const trimmed = raw.trim()
+  if (trimmed === "" || trimmed === "::") return "0.0.0.0"
+  // ::ffff:127.0.0.1 这种 IPv4-mapped 形式,Docker 有时会这么报。
+  return trimmed.startsWith("::ffff:") ? trimmed.slice("::ffff:".length) : trimmed
 }
 
 const parsePort = (value: string | undefined): number | null => {

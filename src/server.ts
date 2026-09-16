@@ -4,6 +4,7 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify"
 import multipart from "@fastify/multipart"
+import fastifyStatic from "@fastify/static"
 import type Docker from "dockerode"
 import {
   ContainerNotFound,
@@ -39,6 +40,11 @@ const MAX_LAYER_BYTES = 512 * 1024 * 1024
 export interface ServerOptions {
   readonly docker: Docker
   readonly endpoint: DockerEndpoint
+  /**
+   * 前端静态目录(build 出来的 web/dist)。给了就在这里一起托管,没给
+   * 就只提供 API —— 开发时前端归 vite 管,部署时可以用 --static-dir 指过来。
+   */
+  readonly staticDir?: string | null
 }
 
 // 把模块抛出来的错误翻译成 HTTP:一个状态码 + 一段给用户看的话。
@@ -90,7 +96,7 @@ const describeFailure = (
 }
 
 export const createServer = (options: ServerOptions): FastifyInstance => {
-  const { docker, endpoint } = options
+  const { docker, endpoint, staticDir } = options
   const app = Fastify({ logger: false })
 
   app.register(multipart, {
@@ -236,6 +242,24 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
       return { ok: true }
     })
   )
+
+  // 前端页面。放在所有 API 路由后面注册,免得静态路由先把手伸到 /api 上。
+  //
+  // 单进程单端口的好处是不用再配一个静态服务器,也不用处理跨域:页面和
+  // /api 同源。想分开部署(比如前端交给 CDN 或 caddy)就不传 staticDir。
+  if (staticDir !== null && staticDir !== undefined) {
+    app.register(fastifyStatic, { root: staticDir, index: ["index.html"] })
+
+    // 前端是单页应用:没匹配到文件的路径都回首页,让前端自己路由。
+    // /api 底下不这么干 —— 拼错的接口该是 404,不该悄悄返回一份 HTML。
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith("/api")) {
+        reply.status(404)
+        return { message: `没有这个接口:${request.method} ${request.url}`, hint: "" }
+      }
+      return reply.sendFile("index.html")
+    })
+  }
 
   return app
 }

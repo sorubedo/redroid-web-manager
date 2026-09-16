@@ -19,6 +19,19 @@ import type { BootParam } from "./redroid-params.js"
 
 export type RestartPolicy = "no" | "always" | "unless-stopped" | "on-failure"
 
+/**
+ * adb 端口绑到宿主的哪个地址上。
+ *
+ * 默认只有本机:Docker 的 -p 不写地址时是绑所有网卡的,而 adb 没有鉴权,
+ * 连上就是 Android 里的 root —— 那等于把机器敞开在网络上。要远程连的时候
+ * 再单独打开,并且自己想清楚前面有没有别的防护。
+ */
+export const ADB_BIND_ADDRESSES = ["127.0.0.1", "0.0.0.0"] as const
+
+export type AdbBindAddress = (typeof ADB_BIND_ADDRESSES)[number]
+
+export const DEFAULT_ADB_BIND_ADDRESS: AdbBindAddress = "127.0.0.1"
+
 export interface RedroidContainerSpec {
   readonly image: string
   readonly name: string
@@ -30,6 +43,8 @@ export interface RedroidContainerSpec {
   readonly params: ReadonlyArray<BootParam>
   /** 宿主端口 -> 容器里的 5555;null 表示自动挑一个 */
   readonly adbPort: number | null
+  /** 上面那个端口绑在宿主的哪个地址上 */
+  readonly adbBindAddress: AdbBindAddress
 }
 
 export interface CreatedContainer {
@@ -229,6 +244,22 @@ const parseDataMount = (value: unknown): DataMount | null => {
   throw invalid("dataMount.kind", "dataMount.kind 只能是 bind 或 volume")
 }
 
+const parseAdbBindAddress = (value: unknown): AdbBindAddress => {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_ADB_BIND_ADDRESS
+  }
+  if (
+    typeof value === "string" &&
+    (ADB_BIND_ADDRESSES as ReadonlyArray<string>).includes(value)
+  ) {
+    return value as AdbBindAddress
+  }
+  throw invalid(
+    "adbBindAddress",
+    `adb 绑定地址只能是 ${ADB_BIND_ADDRESSES.join(" 或 ")},收到的是:${String(value)}`
+  )
+}
+
 const parseParams = (value: unknown): ReadonlyArray<BootParam> => {
   if (value === undefined || value === null) return []
   if (!Array.isArray(value)) throw invalid("params", "params 得是一个数组")
@@ -278,6 +309,7 @@ const parseSpec = (input: unknown): RedroidContainerSpec => {
     dataMount: parseDataMount(record.dataMount),
     params: parseParams(record.params),
     adbPort: optionalInteger(record.adbPort, "adbPort", "adb 端口"),
+    adbBindAddress: parseAdbBindAddress(record.adbBindAddress),
   }
 }
 
@@ -346,7 +378,11 @@ const toDockerOptions = (
     AutoRemove: spec.autoRemove,
     RestartPolicy: { Name: spec.restartPolicy },
     PortBindings: {
-      [ADB_PORT_IN_CONTAINER]: [{ HostPort: String(adbPort) }],
+      // HostIp 必须写上。留空的话 Docker 按 0.0.0.0 处理 —— 那是 -p 5555:5555
+      // 的行为,adb 会直接暴露在所有网卡上。
+      [ADB_PORT_IN_CONTAINER]: [
+        { HostIp: spec.adbBindAddress, HostPort: String(adbPort) },
+      ],
     },
   }
 
