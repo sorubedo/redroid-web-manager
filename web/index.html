@@ -1,9 +1,25 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>redroid-web-manager</title>
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/droid.svg" type="image/svg+xml" />
+    <title>redroid 管理台</title>
+    <script>
+      // 在首次绘制之前定好主题,否则会先白闪一下再变暗。
+      // 存的键名和 src/theme.ts 里的 STORAGE_KEY 是同一个,改要一起改。
+      try {
+        const saved = localStorage.getItem("redroid-theme")
+        const dark =
+          saved === "dark" ||
+          (saved !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches)
+        document.documentElement.classList.toggle("dark", dark)
+      } catch {
+        /* 隐私模式里 localStorage 可能不给用,那就按默认的暗色来 */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

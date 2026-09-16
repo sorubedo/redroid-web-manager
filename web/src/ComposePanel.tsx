@@ -1,17 +1,34 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   ApiFailure,
   composeImage,
   fetchBaseImages,
+  formatSize,
   type ComposeEvent,
   type RedroidImage,
 } from "./api"
-import { FailureBox } from "./Bits"
+import { CheckCircle, Layers, Spinner, Terminal, Upload, X } from "./icons"
+import { Select } from "./Select"
+import {
+  Badge,
+  Button,
+  CommandBlock,
+  controlClass,
+  EmptyState,
+  FailureBox,
+  Field,
+  IconButton,
+  PageHeader,
+  Skeleton,
+} from "./ui"
 import { useRemote } from "./useRemote"
 
-// 输出标签的默认值:在基础镜像的标签后面加 -custom。
-// 用户可以改。注意不能和基础镜像完全相同 —— 后端也会拦,这里先给个好默认。
+// 输出标签的默认值:在基础镜像的标签后面接 -custom,用户可以改。
+// 注意不能和基础镜像完全一样 —— 后端也会拦,这里先给个好默认。
 const suggestTarget = (reference: string): string => `${reference}-custom`
+
+const looksLikeError = (line: string): boolean =>
+  /error|failed|失败|not found|denied/i.test(line)
 
 export const ComposePanel = () => {
   const images = useRemote<ReadonlyArray<RedroidImage>>(fetchBaseImages)
@@ -21,15 +38,30 @@ export const ComposePanel = () => {
   const [files, setFiles] = useState<ReadonlyArray<File>>([])
   const [lines, setLines] = useState<ReadonlyArray<string>>([])
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{ target: string } | null>(null)
+  const [result, setResult] = useState<string | null>(null)
   const [failure, setFailure] = useState<{
-    message: string
-    hint: string
+    readonly message: string
+    readonly hint: string
   } | null>(null)
+  const [dropping, setDropping] = useState(false)
+
+  const logRef = useRef<HTMLDivElement>(null)
+
+  // 日志是边跑边冒出来的,新的一来就贴到底部。
+  useEffect(() => {
+    const element = logRef.current
+    if (element !== null) element.scrollTop = element.scrollHeight
+  }, [lines.length, busy])
 
   const chooseBase = (reference: string) => {
     setBase(reference)
     setTarget(suggestTarget(reference))
+  }
+
+  const pickFiles = (picked: ReadonlyArray<File>) => {
+    if (picked.length === 0) return
+    setFiles(picked)
+    setResult(null)
   }
 
   const submit = async () => {
@@ -39,7 +71,7 @@ export const ComposePanel = () => {
     setLines([])
 
     const form = new FormData()
-    // 字段要排在文件前面:后端是边收边处理,得先知道 base/target。
+    // 字段要排在文件前面:后端边收边处理,得先知道 base / target。
     form.append("base", base)
     form.append("target", target)
     for (const file of files) form.append("layers", file, file.name)
@@ -53,8 +85,8 @@ export const ComposePanel = () => {
             message: event.message ?? "构建失败",
             hint: event.hint ?? "",
           })
-        } else if (event.type === "done") {
-          setResult({ target: event.target ?? target })
+        } else {
+          setResult(event.target ?? target)
         }
       })
     } catch (error) {
@@ -69,109 +101,221 @@ export const ComposePanel = () => {
   }
 
   const ready = base !== "" && target !== "" && files.length > 0 && !busy
+  const baseImage = images.data?.find((image) => image.reference === base)
+
+  const status = busy
+    ? { tone: "info" as const, label: "合成中", pulse: true }
+    : failure !== null
+      ? { tone: "danger" as const, label: "失败", pulse: false }
+      : result !== null
+        ? { tone: "ok" as const, label: "完成", pulse: false }
+        : { tone: "neutral" as const, label: "待命", pulse: false }
 
   return (
     <>
-      <p className="muted">
-        拿一张原版 redroid 镜像做底,叠上一个或多个 tar 包,产出一张新镜像。
-        tar 里是什么由你决定 —— 程序只看得到 tar,不关心里面装的是 Magisk
-        还是别的东西。
-      </p>
+      <PageHeader
+        title="合成台"
+        description="拿一张原版镜像做底,叠上 tar 包,产出一张新镜像"
+        busy={images.busy}
+        onRefresh={images.reload}
+      />
 
-      {images.failure !== null && <FailureBox failure={images.failure} />}
-
-      {images.data !== null && images.data.length === 0 && (
-        <div className="empty">
-          <p>本机没有原版 redroid 镜像,没得选。</p>
-          <p>
-            先拉一个:
-            <code>docker pull redroid/redroid:14.0.0_64only-latest</code>
-          </p>
-        </div>
+      {images.failure !== null && (
+        <FailureBox failure={images.failure} onRetry={images.reload} />
       )}
 
+      {images.failure === null && images.data === null && <Skeleton count={2} />}
+
+      {images.failure === null &&
+        images.data !== null &&
+        images.data.length === 0 && (
+          <EmptyState
+            icon={<Layers className="size-5" />}
+            title="本机没有原版 redroid 镜像,没得选"
+          >
+            <p>先拉一张:</p>
+            <CommandBlock command="docker pull redroid/redroid:14.0.0_64only-latest" />
+          </EmptyState>
+        )}
+
       {images.data !== null && images.data.length > 0 && (
-        <section className="card create-form">
-          <div className="field">
-            <label htmlFor="compose-base">基础镜像</label>
-            <select
-              id="compose-base"
-              value={base}
-              onChange={(event) => chooseBase(event.target.value)}
-            >
-              <option value="">选一张原版镜像…</option>
-              {images.data.map((image) => (
-                <option key={image.reference} value={image.reference}>
-                  {image.reference}({image.architecture})
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <div className="animate-rise space-y-5 rounded-2xl border border-line bg-panel p-5 shadow-sm">
+            <Field label="基础镜像" htmlFor="compose-base">
+              <Select
+                id="compose-base"
+                value={base}
+                mono
+                placeholder="选一张原版镜像…"
+                options={images.data.map((image) => ({
+                  value: image.reference,
+                  label: image.reference,
+                  hint: `${image.architecture} · ${formatSize(image.size)}`,
+                }))}
+                onChange={chooseBase}
+              />
+            </Field>
 
-          <div className="field">
-            <label htmlFor="compose-target">输出标签</label>
-            <input
-              id="compose-target"
-              value={target}
-              onChange={(event) => setTarget(event.target.value)}
-            />
-            <p className="muted">
-              合成出来的镜像叫什么。名字里不能有空格和换行。
-            </p>
-          </div>
-
-          <div className="field">
-            <label htmlFor="compose-layers">层(tar 包,可以选多个)</label>
-            <input
-              id="compose-layers"
-              type="file"
-              multiple
-              accept=".tar,application/x-tar"
-              onChange={(event) =>
-                setFiles(Array.from(event.target.files ?? []))
-              }
-            />
-            {files.length > 0 && (
-              <ul className="file-list">
-                {files.map((file) => (
-                  <li key={file.name}>
-                    <span className="mono">{file.name}</span>
-                    <span className="muted">
-                      {(file.size / 1024 / 1024).toFixed(1)} MiB
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            {baseImage !== undefined && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line bg-panel-2/60 px-3 py-2 text-[11px] text-faint">
+                <span className="font-mono">{baseImage.architecture}</span>
+                <span>{formatSize(baseImage.size)}</span>
+                <span className="font-mono">
+                  {baseImage.id.replace(/^sha256:/, "").slice(0, 12)}
+                </span>
+              </div>
             )}
-            <p className="muted">
-              按选中的顺序叠上去。tar 会被解开到镜像根目录(就是
-              Dockerfile 里 ADD 那个行为)。
-            </p>
-          </div>
 
-          {result !== null && (
-            <div className="success">
-              <strong>合成完成:{result.target}</strong>
-              <p>回「镜像」那一页就能拿它创建容器了。</p>
-            </div>
-          )}
-
-          {failure !== null && <FailureBox failure={failure} />}
-
-          <div className="actions">
-            <button
-              type="button"
-              disabled={!ready}
-              onClick={() => void submit()}
+            <Field
+              label="输出标签"
+              htmlFor="compose-target"
+              hint="合成出来的镜像叫什么。名字里不能有空格和换行。"
             >
-              {busy ? "合成中…" : "开始合成"}
-            </button>
+              <input
+                id="compose-target"
+                value={target}
+                onChange={(event) => setTarget(event.target.value)}
+                className={`${controlClass} font-mono text-[13px]`}
+              />
+            </Field>
+
+            <div>
+              <span className="mb-1.5 block text-sm font-medium">
+                层(tar 包,可以选多个)
+              </span>
+              <label
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  setDropping(true)
+                }}
+                onDragLeave={() => setDropping(false)}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  setDropping(false)
+                  pickFiles(Array.from(event.dataTransfer.files))
+                }}
+                className={`flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition ${
+                  dropping
+                    ? "border-brand bg-brand-soft"
+                    : "border-line-strong/70 hover:border-line-strong hover:bg-panel-2/50"
+                }`}
+              >
+                <input
+                  type="file"
+                  multiple
+                  accept=".tar,application/x-tar"
+                  className="hidden"
+                  onChange={(event) => pickFiles(Array.from(event.target.files ?? []))}
+                />
+                <Upload className="size-5 text-faint" />
+                <span className="text-sm">把 tar 拖进来,或者点这里挑文件</span>
+                <span className="text-xs text-faint">
+                  按挑中的顺序一层层叠上去,tar 会解到镜像根目录
+                  (就是 Dockerfile 里 ADD 那个行为)
+                </span>
+              </label>
+
+              {files.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {files.map((file, index) => (
+                    <li
+                      key={`${file.name}-${index}`}
+                      className="flex items-center gap-2 rounded-lg border border-line bg-panel-2/50 px-3 py-1.5"
+                    >
+                      <span className="w-5 shrink-0 text-center text-[11px] text-faint tabular-nums">
+                        {index + 1}
+                      </span>
+                      <span
+                        className="min-w-0 flex-1 truncate font-mono text-xs"
+                        title={file.name}
+                      >
+                        {file.name}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-faint tabular-nums">
+                        {(file.size / 1024 / 1024).toFixed(1)} MiB
+                      </span>
+                      <IconButton
+                        aria-label={`去掉 ${file.name}`}
+                        className="size-6"
+                        onClick={() =>
+                          setFiles((current) =>
+                            current.filter((_, position) => position !== index)
+                          )
+                        }
+                      >
+                        <X className="size-3.5" />
+                      </IconButton>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {result !== null && (
+              <div className="animate-rise flex items-start gap-3 rounded-xl border border-ok/30 bg-ok-soft px-4 py-3">
+                <CheckCircle className="mt-0.5 size-4 shrink-0 text-ok" />
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium">合成完成:{result}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    回「镜像」那一页就能拿它创建容器了。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 border-t border-line pt-4">
+              <Button
+                tone="primary"
+                disabled={!ready}
+                onClick={() => void submit()}
+              >
+                {busy && <Spinner className="size-4 animate-spin" />}
+                {busy ? "合成中…" : "开始合成"}
+              </Button>
+              <span className="text-[11px] text-faint">
+                {files.length === 0
+                  ? "挑好 tar 包才能开始"
+                  : `准备叠 ${files.length} 层`}
+              </span>
+            </div>
           </div>
 
-          {lines.length > 0 && (
-            <pre className="build-log">{lines.join("\n")}</pre>
-          )}
-        </section>
+          <div className="animate-rise overflow-hidden rounded-2xl border border-line bg-panel shadow-sm lg:sticky lg:top-24">
+            <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+              <Terminal className="size-4 text-faint" />
+              <span className="text-sm font-medium">构建日志</span>
+              <Badge tone={status.tone} pulse={status.pulse} className="ml-auto">
+                {status.label}
+              </Badge>
+            </div>
+            <div
+              ref={logRef}
+              className="scroll-slim h-96 overflow-y-auto bg-panel-2/40 px-4 py-3 font-mono text-[11.5px] leading-relaxed"
+            >
+              {lines.length === 0 ? (
+                <p className="text-faint">
+                  {busy ? "等后端传回第一行……" : "开始合成之后,Docker 那边说的话会一行行出现在这里。"}
+                </p>
+              ) : (
+                lines.map((line, index) => (
+                  <p
+                    key={index}
+                    className={`break-all whitespace-pre-wrap ${
+                      looksLikeError(line) ? "text-danger" : "text-muted"
+                    }`}
+                  >
+                    {line}
+                  </p>
+                ))
+              )}
+            </div>
+            {failure !== null && (
+              <div className="border-t border-line p-4">
+                <FailureBox failure={failure} />
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </>
   )

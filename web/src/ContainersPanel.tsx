@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from "react"
 import {
+  adbConnectHost,
   ApiFailure,
   dataMountLabel,
   fetchContainers,
+  isAdbExposed,
   removeContainer,
   startContainer,
   stateLabel,
@@ -10,7 +12,19 @@ import {
   type ContainerParam,
   type RedroidContainer,
 } from "./api"
-import { EmptyBox, FailureBox, Toolbar } from "./Bits"
+import { Box, Play, Spinner, Stop, Trash } from "./icons"
+import {
+  Badge,
+  Button,
+  Collapsible,
+  CommandBlock,
+  CopyButton,
+  cx,
+  EmptyState,
+  FailureBox,
+  PageHeader,
+  Skeleton,
+} from "./ui"
 import { useRemote } from "./useRemote"
 
 const restartPolicyLabel = (policy: string): string => {
@@ -24,14 +38,24 @@ const restartPolicyLabel = (policy: string): string => {
   return policy
 }
 
-const formatTime = (iso: string): string => {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("zh-CN")
+/** 「3 小时前创建」这种。完整时间挂在 title 上,不占卡片的地方。 */
+const relativeTime = (iso: string): string => {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return iso
+  const minutes = Math.round((Date.now() - then) / 60_000)
+  if (minutes < 1) return "刚刚创建"
+  if (minutes < 60) return `${minutes} 分钟前创建`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} 小时前创建`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days} 天前创建`
+  return `${new Date(iso).toLocaleDateString("zh-CN")} 创建`
 }
 
-const explain = (param: ContainerParam): string => {
+/** 参数值下面那句解释。官方文档里查不到的,就不硬编一句话了。 */
+const explain = (param: ContainerParam): string | null => {
   const parameter = param.parameter
-  if (parameter === null) return "不在官方文档里"
+  if (parameter === null) return null
   const parts = [parameter.summary]
   if (parameter.defaultValue !== undefined) {
     parts.push(`默认 ${parameter.defaultValue}`)
@@ -42,18 +66,25 @@ const explain = (param: ContainerParam): string => {
   return parts.join(" · ")
 }
 
-const Row = ({
+const Truth = ({
   label,
-  children,
   warn = false,
+  children,
 }: {
   readonly label: string
-  readonly children: ReactNode
   readonly warn?: boolean
+  readonly children: ReactNode
 }) => (
-  <div className="row">
-    <span className="row-label">{label}</span>
-    <span className={warn ? "warn" : undefined}>{children}</span>
+  <div className="min-w-0">
+    <dt className="text-[11px] text-faint">{label}</dt>
+    <dd
+      className={cx(
+        "mt-0.5 flex items-center gap-1 text-[13px]",
+        warn ? "text-warn" : "text-fg"
+      )}
+    >
+      {children}
+    </dd>
   </div>
 )
 
@@ -66,7 +97,7 @@ interface CardProps {
   readonly onRemove: () => void
 }
 
-const Card = ({
+const ContainerCard = ({
   container,
   busyLabel,
   error,
@@ -78,18 +109,16 @@ const Card = ({
   const busy = busyLabel !== null
   const running = container.state === "running"
 
-  // --rm 的容器,停止就等于删除。所以这种容器不给"删除"按钮:
-  // 它要么是多余的(和停止一模一样),要么会撞上 Docker 的自动删除。
+  // --rm 的容器,停止就等于删除。这种就不给单独的"删除"按钮了 ——
+  // 要么多余,要么会撞上 Docker 自己的清理。
   const stopDeletes = running && container.autoRemove
 
   const confirmText =
     confirming === "stop"
-      ? "这个容器带 --rm,停止之后 Docker 会把它删掉。确定停止?"
-      : confirming === "remove"
-        ? container.dataMount === null
-          ? "容器会被删除,无法恢复。确定?"
-          : `容器会被删除,但它挂的 /data(${dataMountLabel(container.dataMount)})会留着,数据不会丢。确定?`
-        : null
+      ? "这个容器带 --rm,停止之后 Docker 会把它删掉。"
+      : container.dataMount === null
+        ? "容器会被删除,Android 里的数据跟着一起没。"
+        : `容器会被删除,但挂着的 /data(${dataMountLabel(container.dataMount)})会留下。`
 
   const runConfirmed = () => {
     const action = confirming
@@ -98,115 +127,203 @@ const Card = ({
     else if (action === "remove") onRemove()
   }
 
+  // 一切正常时不显示这些 —— 一排"已开启"没有信息量,出事才提醒。
+  const flags: ReadonlyArray<ReactNode> = [
+    container.adbPort === null && (
+      <Badge key="adb" tone="warn">
+        adb 没映射
+      </Badge>
+    ),
+    !container.privileged && (
+      <Badge key="privileged" tone="danger">
+        没开特权模式
+      </Badge>
+    ),
+    isAdbExposed(container.adbBindAddress) && (
+      <Badge key="adb-bind" tone="danger">
+        adb 对全网开放
+      </Badge>
+    ),
+    container.dataMount === null && (
+      <Badge key="data" tone="warn">
+        数据不持久
+      </Badge>
+    ),
+    container.autoRemove && (
+      <Badge key="rm" tone="info">
+        --rm 停止即删除
+      </Badge>
+    ),
+  ].filter(Boolean)
+
   return (
-    <article className="card">
-      <div className="card-head">
-        <h3 className="mono">{container.name}</h3>
-        <span className={`badge ${container.state}`}>
+    <article className="animate-rise flex flex-col rounded-2xl border border-line bg-panel p-5 shadow-sm transition hover:border-line-strong">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3
+            className="truncate font-mono text-sm font-semibold"
+            title={container.name}
+          >
+            {container.name}
+          </h3>
+          <p
+            className="mt-1 truncate font-mono text-[11px] text-faint"
+            title={container.image}
+          >
+            {container.image}
+          </p>
+        </div>
+        <Badge
+          tone={
+            running ? "ok" : container.state === "created" ? "warn" : "neutral"
+          }
+          pulse={running}
+        >
           {stateLabel(container.state)}
-        </span>
-      </div>
+        </Badge>
+      </header>
 
-      <p className="mono muted">{container.image}</p>
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+        <Truth label="adb 端口" warn={container.adbPort === null}>
+          {container.adbPort === null ? (
+            "没映射 5555"
+          ) : (
+            <>
+              <span
+                className="truncate font-mono"
+                title={`${adbConnectHost(
+                  container.adbBindAddress
+                )}:${container.adbPort}`}
+              >
+                {container.adbBindAddress ?? "0.0.0.0"}:{container.adbPort}
+              </span>
+              <CopyButton
+                value={`adb connect ${adbConnectHost(
+                  container.adbBindAddress
+                )}:${container.adbPort}`}
+                label="复制 adb 命令"
+              />
+            </>
+          )}
+        </Truth>
+        <Truth label="/data 挂载" warn={container.dataMount === null}>
+          {container.dataMount === null ? (
+            "没挂载"
+          ) : (
+            <span className="truncate" title={dataMountLabel(container.dataMount)}>
+              {dataMountLabel(container.dataMount)}
+            </span>
+          )}
+        </Truth>
+        <Truth label="重启策略">
+          <span className="truncate">
+            {restartPolicyLabel(container.restartPolicy)}
+          </span>
+        </Truth>
+        <Truth label="运行状态">
+          <span className="truncate" title={container.status}>
+            {container.status}
+          </span>
+        </Truth>
+      </dl>
 
-      <div className="rows">
-        <Row label="状态">{container.status}</Row>
-        <Row label="启动策略">{restartPolicyLabel(container.restartPolicy)}</Row>
-        <Row label="adb 端口" warn={container.adbPort === null}>
-          {container.adbPort === null
-            ? "没映射 5555,连不上 adb"
-            : `5555 → 宿主 ${container.adbPort}`}
-        </Row>
-        <Row label="特权模式" warn={!container.privileged}>
-          {container.privileged ? "已开启" : "没开,redroid 需要 --privileged"}
-        </Row>
-        <Row label="data 持久化" warn={container.dataMount === null}>
-          {container.dataMount === null
-            ? "没挂 /data,容器一删数据就没了"
-            : dataMountLabel(container.dataMount)}
-        </Row>
-        <Row label="创建时间">{formatTime(container.createdAt)}</Row>
-      </div>
-
-      {container.autoRemove && (
-        <p className="warn">
-          这个容器是用 --rm 起的:停止它 = 删除它。
-          {running ? "所以这里只给了一个停止按钮。" : ""}
-        </p>
+      {flags.length > 0 && (
+        <div className="mt-3.5 flex flex-wrap gap-1.5">{flags}</div>
       )}
 
-      <div className="actions">
-        {running ? (
-          <button
-            type="button"
-            className={stopDeletes ? "danger" : undefined}
-            disabled={busy}
-            onClick={() => (stopDeletes ? setConfirming("stop") : onStop())}
-          >
-            {stopDeletes ? "停止并删除" : "停止"}
-          </button>
-        ) : (
-          <button type="button" disabled={busy} onClick={onStart}>
-            启动
-          </button>
-        )}
-        {!stopDeletes && (
-          <button
-            type="button"
-            className="danger"
-            disabled={busy}
-            onClick={() => setConfirming("remove")}
-          >
-            删除
-          </button>
-        )}
-        {busyLabel !== null && <span className="muted">{busyLabel}</span>}
-      </div>
-
-      {confirmText !== null && (
-        <div className="confirm">
-          <span>{confirmText}</span>
-          <button type="button" className="danger" onClick={runConfirmed}>
-            确定
-          </button>
-          <button type="button" onClick={() => setConfirming(null)}>
-            取消
-          </button>
+      {container.params.length > 0 && (
+        <div className="mt-3.5">
+          <Collapsible summary={`启动参数 · ${container.params.length} 项`}>
+            <ul className="scroll-slim max-h-56 space-y-2 overflow-y-auto pr-1">
+              {container.params.map((param) => {
+                const note = explain(param)
+                return (
+                  <li key={param.name}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span
+                        className="truncate font-mono text-[11px] text-muted"
+                        title={param.name}
+                      >
+                        {param.name}
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-brand">
+                        {param.value}
+                      </span>
+                    </div>
+                    {note !== null && (
+                      <p className="mt-0.5 text-[11px] text-faint">{note}</p>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </Collapsible>
         </div>
       )}
 
       {error !== null && (
-        <div className="failure">
-          <strong>{error.message}</strong>
-          {error.hint !== "" && <p>{error.hint}</p>}
+        <div className="mt-3.5">
+          <FailureBox failure={error} />
         </div>
       )}
 
-      <h4>启动参数 ({container.params.length})</h4>
-      {container.params.length === 0 ? (
-        <p className="muted">全部用默认值。</p>
-      ) : (
-        <table className="params">
-          <thead>
-            <tr>
-              <th>参数</th>
-              <th>值</th>
-              <th>说明</th>
-            </tr>
-          </thead>
-          <tbody>
-            {container.params.map((param) => (
-              <tr key={param.name}>
-                <td className="mono">{param.name}</td>
-                <td className="mono">{param.value}</td>
-                <td className={param.parameter === null ? "muted" : undefined}>
-                  {explain(param)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div className="mt-auto flex items-center gap-2 border-t border-line pt-4">
+        {confirming === null ? (
+          <>
+            {running ? (
+              <Button
+                tone={stopDeletes ? "danger" : "default"}
+                disabled={busy}
+                onClick={() => (stopDeletes ? setConfirming("stop") : onStop())}
+              >
+                {busy ? (
+                  <Spinner className="size-4 animate-spin" />
+                ) : (
+                  <Stop className="size-4" />
+                )}
+                {stopDeletes ? "停止并删除" : "停止"}
+              </Button>
+            ) : (
+              <Button tone="primary" disabled={busy} onClick={onStart}>
+                {busy ? (
+                  <Spinner className="size-4 animate-spin" />
+                ) : (
+                  <Play className="size-4" />
+                )}
+                启动
+              </Button>
+            )}
+            {!stopDeletes && (
+              <Button
+                tone="danger-ghost"
+                disabled={busy}
+                onClick={() => setConfirming("remove")}
+              >
+                <Trash className="size-4" />
+                删除
+              </Button>
+            )}
+            <span
+              className="ml-auto truncate text-[11px] text-faint"
+              title={new Date(container.createdAt).toLocaleString("zh-CN")}
+            >
+              {busyLabel ?? relativeTime(container.createdAt)}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 text-xs text-muted">
+              {confirmText}
+            </span>
+            <Button tone="danger" size="sm" onClick={runConfirmed}>
+              确定
+            </Button>
+            <Button size="sm" onClick={() => setConfirming(null)}>
+              取消
+            </Button>
+          </>
+        )}
+      </div>
     </article>
   )
 }
@@ -242,53 +359,70 @@ export const ContainersPanel = () => {
     }
   }
 
+  const count = data?.length ?? 0
+
   return (
     <>
-      <Toolbar busy={busy} reload={reload}>
-        {data === null
-          ? "本机 Docker 里已创建的 redroid 容器"
-          : `共 ${data.length} 个`}
-      </Toolbar>
+      <PageHeader
+        title="容器"
+        description={
+          failure !== null
+            ? "读不到容器列表"
+            : data === null
+              ? "正在读取本机的 redroid 容器……"
+              : count === 0
+                ? "本机还没有 redroid 容器"
+                : `${count} 台 redroid 容器`
+        }
+        busy={busy}
+        onRefresh={reload}
+      />
 
-      {failure !== null && <FailureBox failure={failure} />}
+      {failure !== null && <FailureBox failure={failure} onRetry={reload} />}
 
-      {failure === null && data !== null && data.length === 0 && (
-        <EmptyBox>
-          <p>还没有创建过 redroid 容器。</p>
-          <p>
-            手动起一个试试:
-            <code>docker run -itd --privileged -p 5555:5555 redroid/redroid:12.0.0_64only-latest</code>
-          </p>
-        </EmptyBox>
+      {failure === null && data === null && <Skeleton />}
+
+      {failure === null && data !== null && count === 0 && (
+        <EmptyState
+          icon={<Box className="size-5" />}
+          title="还没有 redroid 容器"
+        >
+          <p>去「镜像」那一页挑一张镜像点「创建容器」,或者手动起一台:</p>
+          <CommandBlock command="docker run -itd --privileged -p 5555:5555 redroid/redroid:12.0.0_64only-latest" />
+        </EmptyState>
       )}
 
-      {data?.map((container) => (
-        <Card
-          key={container.id}
-          container={container}
-          busyLabel={working?.id === container.id ? working.label : null}
-          error={
-            actionError?.id === container.id
-              ? { message: actionError.message, hint: actionError.hint }
-              : null
-          }
-          onStart={() =>
-            void act(container.id, "启动中…", () =>
-              startContainer(container.id)
-            )
-          }
-          onStop={() =>
-            void act(container.id, "停止中,最多等 10 秒…", () =>
-              stopContainer(container.id)
-            )
-          }
-          onRemove={() =>
-            void act(container.id, "删除中…", () =>
-              removeContainer(container.id)
-            )
-          }
-        />
-      ))}
+      {count > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {data?.map((container) => (
+            <ContainerCard
+              key={container.id}
+              container={container}
+              busyLabel={working?.id === container.id ? working.label : null}
+              error={
+                actionError?.id === container.id
+                  ? { message: actionError.message, hint: actionError.hint }
+                  : null
+              }
+              onStart={() =>
+                void act(container.id, "启动中…", () =>
+                  startContainer(container.id)
+                )
+              }
+              onStop={() =>
+                void act(container.id, "停止中,最多等 10 秒…", () =>
+                  stopContainer(container.id)
+                )
+              }
+              onRemove={() =>
+                void act(container.id, "删除中…", () =>
+                  removeContainer(container.id)
+                )
+              }
+            />
+          ))}
+        </div>
+      )}
     </>
   )
 }

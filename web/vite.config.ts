@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
@@ -7,10 +8,12 @@ import { defineConfig } from "vite"
 // fetch("/api/images") 就行 —— 不用管跨域,也不用把端口写死在前端里。
 // 以后要改后端端口,这里是唯一跟着改的地方。
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:3000",
+      // 后端默认在 127.0.0.1:3000。用 --port / REDROID_WEB_PORT 挪过的话,
+      // 这里用 REDROID_WEB_API 指过去,免得两个地方各写一份。
+      "/api": process.env["REDROID_WEB_API"] ?? "http://127.0.0.1:3000",
     },
   },
 })

@@ -1,370 +1,164 @@
+@import "tailwindcss";
+
+/* Tailwind v4 默认跟着系统的 prefers-color-scheme 走暗色,但这里要让用户
+   自己选,所以改成看 <html class="dark">。index.html 里那段小脚本会在首次
+   绘制前把 class 放上去,免得切页时白闪一下。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC",
+    "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+
+  --animate-rise: rise 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-in: slide-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade: fade 0.18s ease-out both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 亮暗两套语义色。组件里只写 bg-panel / text-muted 这类名字,
+   换主题就是换这一组变量。 */
 :root {
-  color-scheme: light dark;
-  font-family:
-    system-ui,
-    "Noto Sans CJK SC",
-    "Source Han Sans SC",
-    sans-serif;
-  line-height: 1.6;
-  --line: color-mix(in srgb, currentColor 15%, transparent);
-  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+  color-scheme: light;
+
+  --app: oklch(0.98 0.004 250);
+  --panel: oklch(1 0 0);
+  --panel-2: oklch(0.962 0.005 250);
+  --line: oklch(0.906 0.007 250);
+  --line-strong: oklch(0.83 0.01 250);
+  --fg: oklch(0.24 0.015 262);
+  --muted: oklch(0.47 0.014 262);
+  --faint: oklch(0.62 0.012 262);
+
+  --brand: oklch(0.56 0.14 162);
+  --brand-fg: oklch(0.99 0.01 160);
+  --ok: oklch(0.56 0.14 152);
+  --warn: oklch(0.58 0.13 62);
+  --danger: oklch(0.55 0.19 25);
+  --info: oklch(0.55 0.14 255);
+
+  --glow: color-mix(in oklab, var(--brand) 9%, transparent);
 }
 
-body {
-  margin: 0;
-  padding: 2rem 1.5rem 4rem;
+.dark {
+  color-scheme: dark;
+
+  --app: oklch(0.185 0.012 262);
+  --panel: oklch(0.225 0.014 262);
+  --panel-2: oklch(0.27 0.015 262);
+  --line: oklch(0.315 0.015 262);
+  --line-strong: oklch(0.42 0.016 262);
+  --fg: oklch(0.955 0.006 250);
+  --muted: oklch(0.73 0.013 255);
+  --faint: oklch(0.6 0.014 255);
+
+  --brand: oklch(0.76 0.15 162);
+  --brand-fg: oklch(0.18 0.02 165);
+  --ok: oklch(0.78 0.15 152);
+  --warn: oklch(0.82 0.14 72);
+  --danger: oklch(0.73 0.16 22);
+  --info: oklch(0.76 0.12 252);
+
+  --glow: color-mix(in oklab, var(--brand) 13%, transparent);
 }
 
-main {
-  max-width: 68rem;
-  margin: 0 auto;
+/* 把上面那组变量接到 Tailwind 的调色板上:bg-app、text-muted、border-line…… */
+@theme inline {
+  --color-app: var(--app);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-brand-soft: color-mix(in oklab, var(--brand) 14%, transparent);
+  --color-ok-soft: color-mix(in oklab, var(--ok) 14%, transparent);
+  --color-warn-soft: color-mix(in oklab, var(--warn) 15%, transparent);
+  --color-danger-soft: color-mix(in oklab, var(--danger) 13%, transparent);
+  --color-info-soft: color-mix(in oklab, var(--info) 14%, transparent);
 }
 
-h1 {
-  font-size: 1.4rem;
-  margin: 0;
+@layer base {
+  body {
+    margin: 0;
+    background-color: var(--app);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 键盘用户要看得见焦点,鼠标用户不该被框住。 */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--brand) 28%, transparent);
+  }
 }
 
-h3 {
-  font-size: 1rem;
-  margin: 0;
-}
+@layer utilities {
+  /* 细一点的滚动条,不然日志框边上会很吵。 */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
 
-h4 {
-  font-size: 0.85rem;
-  margin: 1.25rem 0 0.5rem;
-  opacity: 0.7;
-  font-weight: 600;
-}
+  .scroll-slim::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
 
-.mono {
-  font-family: var(--mono);
-}
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background-color: var(--line-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
 
-.muted {
-  opacity: 0.6;
-  font-size: 0.88rem;
-}
-
-.warn {
-  color: color-mix(in srgb, red 75%, currentColor);
-}
-
-button {
-  font: inherit;
-  padding: 0.35rem 0.9rem;
-  border-radius: 0.4rem;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tabs {
-  display: flex;
-  gap: 0.5rem;
-  margin: 1.25rem 0 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.tabs button {
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 0.4rem 0.6rem;
-  opacity: 0.6;
-}
-
-.tabs button.active {
-  opacity: 1;
-  border-bottom-color: currentColor;
-  font-weight: 600;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 1rem 0;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-th,
-td {
-  text-align: left;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--line);
-  vertical-align: top;
-}
-
-th {
-  font-weight: 600;
-  opacity: 0.7;
-}
-
-.number {
-  text-align: right;
-}
-
-table.params {
-  font-size: 0.85rem;
-}
-
-.card {
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  padding: 1rem 1.25rem 1.25rem;
-  margin-bottom: 1rem;
-}
-
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.card > p {
-  margin: 0.35rem 0 0;
-}
-
-.badge {
-  font-size: 0.75rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  white-space: nowrap;
-}
-
-.badge.running,
-.badge.official {
-  border-color: color-mix(in srgb, green 55%, transparent);
-  color: color-mix(in srgb, green 65%, currentColor);
-}
-
-.badge.derived {
-  border-color: color-mix(in srgb, dodgerblue 55%, transparent);
-  color: color-mix(in srgb, dodgerblue 70%, currentColor);
-}
-
-.badge.created {
-  border-color: color-mix(in srgb, orange 55%, transparent);
-  color: color-mix(in srgb, orange 75%, currentColor);
-}
-
-.rows {
-  margin-top: 0.9rem;
-  display: grid;
-  gap: 0.15rem;
-  font-size: 0.9rem;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: 7.5rem 1fr;
-  gap: 0.75rem;
-}
-
-.row-label {
-  opacity: 0.6;
-}
-
-.failure,
-.empty {
-  margin-top: 1rem;
-  padding: 0.9rem 1.1rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--line);
-}
-
-.success {
-  margin: 1rem 0;
-  padding: 0.9rem 1.1rem;
-  border-radius: 0.5rem;
-  border: 1px solid color-mix(in srgb, green 45%, transparent);
-}
-
-.success p {
-  margin: 0.4rem 0 0;
-  font-size: 0.9rem;
-}
-
-.create-form {
-  margin-bottom: 1.5rem;
-}
-
-.field {
-  margin-top: 1rem;
-  border: none;
-  padding: 0;
-}
-
-.field > label,
-.field > legend {
-  display: block;
-  font-size: 0.85rem;
-  opacity: 0.7;
-  margin-bottom: 0.35rem;
-  padding: 0;
-}
-
-input[type="text"],
-input[type="number"],
-input:not([type]),
-select,
-textarea {
-  font: inherit;
-  font-size: 0.9rem;
-  width: 100%;
-  max-width: 32rem;
-  padding: 0.35rem 0.55rem;
-  border-radius: 0.35rem;
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  background: transparent;
-  color: inherit;
-}
-
-textarea {
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  resize: vertical;
-}
-
-.check,
-.radios label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  margin-top: 0.5rem;
-}
-
-.check input,
-.radios input {
-  width: auto;
-  margin: 0;
-}
-
-.radios {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-}
-
-.params-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr));
-  gap: 0.7rem 2rem;
-}
-
-.param-row {
-  display: grid;
-  grid-template-columns: 12rem 1fr;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.param-row label {
-  font-size: 0.85rem;
-  opacity: 0.75;
-  margin: 0;
-}
-
-.param-row input,
-.param-row select {
-  max-width: none;
-}
-
-input[type="file"] {
-  font: inherit;
-  font-size: 0.9rem;
-  max-width: 32rem;
-}
-
-.file-list {
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0 0;
-  display: grid;
-  gap: 0.2rem;
-  font-size: 0.85rem;
-}
-
-.file-list li {
-  display: flex;
-  gap: 0.75rem;
-  align-items: baseline;
-}
-
-.build-log {
-  margin: 1rem 0 0;
-  padding: 0.75rem 0.9rem;
-  border-radius: 0.4rem;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, currentColor 4%, transparent);
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  line-height: 1.5;
-  max-height: 24rem;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-button.danger {
-  border-color: color-mix(in srgb, red 45%, transparent);
-  color: color-mix(in srgb, red 70%, currentColor);
-}
-
-.confirm {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-  padding: 0.6rem 0.8rem;
-  border-radius: 0.4rem;
-  border: 1px solid color-mix(in srgb, red 40%, transparent);
-  font-size: 0.9rem;
-}
-
-.confirm > span:first-child {
-  flex: 1 1 20rem;
-}
-
-.failure {
-  border-color: color-mix(in srgb, red 45%, transparent);
-}
-
-.failure p,
-.empty p {
-  margin: 0.4rem 0 0;
-  font-size: 0.9rem;
-  opacity: 0.85;
-}
-
-code {
-  font-family: var(--mono);
-  font-size: 0.88em;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  padding: 0.1rem 0.35rem;
-  border-radius: 0.25rem;
+  .scroll-slim::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
 }

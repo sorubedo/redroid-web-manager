@@ -37,6 +37,11 @@ export interface RedroidContainer {
   readonly privileged: boolean
   readonly autoRemove: boolean
   readonly adbPort: number | null
+  /**
+   * adb 端口绑在宿主的哪个地址上。null 表示压根没映射端口。
+   * "0.0.0.0" 是"所有网卡"—— 也就是局域网上谁都能连,界面上要标出来。
+   */
+  readonly adbBindAddress: string | null
   readonly dataMount: DataMount | null
   readonly params: ReadonlyArray<ContainerParam>
 }
@@ -49,6 +54,22 @@ export type DataMount =
 
 export const dataMountLabel = (mount: DataMount): string =>
   mount.kind === "volume" ? `卷 ${mount.name}` : mount.source
+
+/**
+ * adb 端口绑在宿主的哪个地址上。
+ *
+ * 默认只有本机:adb 没有鉴权,连上就是 Android 里的 root,绑到所有网卡等于
+ * 把它敞开在网络上。要远程连的时候再显式打开。
+ */
+export type AdbBindAddress = "127.0.0.1" | "0.0.0.0"
+
+/** 这个绑定地址是不是"对全网开放"。 */
+export const isAdbExposed = (address: string | null): boolean =>
+  address === "0.0.0.0" || address === "::"
+
+/** 该用哪个地址去 adb connect。绑在所有网卡上时,本机连 localhost 就行。 */
+export const adbConnectHost = (address: string | null): string =>
+  address === null || isAdbExposed(address) ? "localhost" : address
 
 // 后端返回的错误:message 是一句话,hint 是该怎么办。
 export class ApiFailure extends Error {
@@ -191,6 +212,8 @@ export interface CreateContainerInput {
   readonly params: ReadonlyArray<{ readonly name: string; readonly value: string }>
   /** 宿主端口 -> 容器里的 5555;null 表示让后端自动挑一个 */
   readonly adbPort: number | null
+  /** 上面那个端口绑在宿主的哪个地址上 */
+  readonly adbBindAddress: AdbBindAddress
 }
 
 export interface CreatedContainer {
@@ -207,9 +230,6 @@ export const formatSize = (bytes: number): string =>
   bytes >= 1024 ** 3
     ? `${(bytes / 1024 ** 3).toFixed(2)} GB`
     : `${(bytes / 1024 ** 2).toFixed(1)} MB`
-
-export const shortId = (id: string): string =>
-  id.replace(/^sha256:/, "").slice(0, 12)
 
 export const stateLabel = (state: string): string =>
   state === "running"
