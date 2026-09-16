@@ -116,10 +116,6 @@ export const App = () => {
         {tab === "images" && <ImagesPanel />}
         {tab === "compose" && <ComposePanel />}
       </main>
-
-      <footer className="mx-auto w-full max-w-6xl px-4 pt-4 pb-10 text-[11px] text-faint sm:px-6">
-        服务只监听 127.0.0.1,操作的是本机 Docker —— 别把它暴露到公网上。
-      </footer>
     </div>
   )
 }

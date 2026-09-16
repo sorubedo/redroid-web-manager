@@ -272,7 +272,7 @@ export const CreateContainerForm = ({
               hint={
                 portBad
                   ? "端口得是数字。"
-                  : "宿主机上映射到容器里 5555 的端口。留空就从 5555 往上找第一个没被占的。"
+                  : "宿主机上映射到容器里 5555 的端口。留空的话,程序会从 5555 往上尝试找第一个没被别的容器占的 —— 建议自己填一个。"
               }
             >
               <input
@@ -281,7 +281,7 @@ export const CreateContainerForm = ({
                 min={1}
                 max={65535}
                 inputMode="numeric"
-                placeholder="留空 = 自动挑一个"
+                placeholder="留空 = 尝试自动挑一个"
                 value={draft.adbPort}
                 onChange={(event) => update({ adbPort: event.target.value })}
                 className={controlClass}
