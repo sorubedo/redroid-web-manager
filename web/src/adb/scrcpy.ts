@@ -139,7 +139,16 @@ export class ScrcpyScreen {
 
   /** 设备端最近一次复制的内容;新订阅者补一条,免得订阅前那一下丢了。 */
   #deviceClipboard: string | null = null
-  /** 已知的、两边一致的内容。设备回推同一条时不当成"设备复制了"。 */
+  /**
+   * 已知的、两边一致的内容,收到一模一样的就不当回事。
+   *
+   * 这里算是防御过头了:scrcpy 的服务端自己会把"我这次设进去的变化"过滤掉
+   * (Controller 里的 isSettingClipboard),所以我们发过去的文字正常不会再被
+   * 推回来。留着是因为两种情况 —— 那个过滤有竞态、通知晚到一步,或者用户
+   * 随后在设备上又复制了同一段文字;那时没它就会重复写一遍本机剪贴板、
+   * 重复弹一条提示。另外,哪天想把"本机剪贴板一变就推给设备"接上,这道
+   * 去重就是防循环的保险。
+   */
   #lastClipboard: string | null = null
   #clipboardSequence = 1n
   readonly #clipboardListeners = new Set<(text: string) => void>()
@@ -310,8 +319,8 @@ export class ScrcpyScreen {
 
     const sequence = this.#clipboardSequence
     this.#clipboardSequence += 1n
-    // 先记账再发:设备收到之后会把同一段文字回推一条,那条不该再当成
-    // "设备复制了"同步回本机,否则两边会来回弹。
+    // 先记账再发。设备那边一般不会把这条回推(服务端自己过滤了),真回推了
+    // 也不该当成"设备复制了"再同步回本机 —— 见 #lastClipboard 上的说明。
     this.#lastClipboard = text
 
     try {
@@ -353,6 +362,7 @@ export class ScrcpyScreen {
         const { done, value } = await reader.read()
         if (done) break
         if (value === undefined || value === "") continue
+        // 和刚发过去的是同一段,不用再往本机写一遍、再弹一次提示。
         if (value === this.#lastClipboard) continue
         this.#lastClipboard = value
         this.#deviceClipboard = value
