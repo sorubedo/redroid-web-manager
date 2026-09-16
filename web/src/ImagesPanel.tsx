@@ -1,13 +1,15 @@
 import { useState } from "react"
 import {
+  ApiFailure,
   fetchRedroidParams,
   fetchUsableImages,
   formatSize,
+  removeImage,
   type CreatedContainer,
   type RedroidImage,
   type RedroidParameter,
 } from "./api"
-import { CheckCircle, Layers, Plus, X } from "./icons"
+import { CheckCircle, Layers, Plus, Spinner, Trash, X } from "./icons"
 import { CreateContainerForm } from "./CreateContainerForm"
 import {
   Badge,
@@ -23,6 +25,133 @@ import {
 import { useRemote } from "./useRemote"
 import type { Failure } from "./useRemote"
 
+interface ImageRowProps {
+  readonly image: RedroidImage
+  /** 参数表还没到、或者已经在创建另一个容器的表单时,不让再点"创建容器" */
+  readonly createDisabled: boolean
+  /** 这一行正在做的事情,没在忙就是 null */
+  readonly busyLabel: string | null
+  readonly error: Failure | null
+  readonly onCreate: () => void
+  readonly onRemove: () => void
+}
+
+const ImageRow = ({
+  image,
+  createDisabled,
+  busyLabel,
+  error,
+  onCreate,
+  onRemove,
+}: ImageRowProps) => {
+  const [confirming, setConfirming] = useState(false)
+  const busy = busyLabel !== null
+
+  // 删镜像不能撤销。合成出来的镜像代价更高(得重新叠一遍层),所以那句提示
+  // 分两种写 —— 原版的下次要重新 pull 就有。
+  const confirmText =
+    image.kind === "derived"
+      ? "删掉这张合成镜像?里面叠的层也一起没"
+      : "删掉这张镜像?再要用得重新 pull"
+
+  return (
+    <>
+      <tr className="border-t border-line transition hover:bg-panel-2/50">
+        <td className="px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 窄屏上引用名得能在任意位置断行,不然这一列的最小宽度就把
+                整个表格顶出去了(表头右侧还有操作按钮) */}
+            <span
+              className="min-w-0 break-all font-mono text-[13px]"
+              title={image.reference}
+            >
+              {image.reference}
+            </span>
+            <Badge tone={image.kind === "official" ? "ok" : "info"}>
+              {image.kind === "official" ? "原版" : "合成"}
+            </Badge>
+          </div>
+        </td>
+        <td className="hidden px-4 py-3 text-muted sm:table-cell">
+          {image.architecture}
+        </td>
+        <td className="px-4 py-3 text-right text-muted tabular-nums whitespace-nowrap">
+          {formatSize(image.size)}
+        </td>
+        <td className="px-4 py-3">
+          {busy ? (
+            <div className="flex items-center justify-end gap-1.5 text-xs text-muted">
+              <Spinner className="size-3.5 animate-spin" />
+              <span className="whitespace-nowrap">{busyLabel}</span>
+            </div>
+          ) : // 确认那一步交给下面单独一行去说 —— 这一格放不下"删了会怎么样"
+          // 和两个按钮,窄屏上会被挤成一列一个字。
+          confirming ? null : (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                tone="default"
+                size="sm"
+                className="border-brand/35 text-brand hover:bg-brand-soft"
+                disabled={createDisabled}
+                onClick={onCreate}
+                title="用这张镜像创建容器"
+                aria-label="创建容器"
+              >
+                <Plus className="size-3.5" />
+                {/* 窄屏上光靠图标就够,文字收起来 —— 不然这一列会把表格撑出去 */}
+                <span className="hidden sm:inline">创建容器</span>
+              </Button>
+              <Button
+                tone="danger-ghost"
+                size="sm"
+                onClick={() => setConfirming(true)}
+                title="从本机删掉这张镜像"
+                aria-label="删除镜像"
+              >
+                <Trash className="size-3.5" />
+                <span className="hidden sm:inline">删除</span>
+              </Button>
+            </div>
+          )}
+        </td>
+      </tr>
+      {confirming && !busy && (
+        <tr className="border-t border-line bg-danger-soft/40">
+          <td colSpan={4} className="px-4 py-3">
+            <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+              <span className="min-w-0 flex-1 text-xs text-muted">
+                {confirmText}
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  tone="danger"
+                  size="sm"
+                  onClick={() => {
+                    setConfirming(false)
+                    onRemove()
+                  }}
+                >
+                  确定删除
+                </Button>
+                <Button size="sm" onClick={() => setConfirming(false)}>
+                  取消
+                </Button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+      {error !== null && (
+        <tr className="border-t border-line">
+          <td colSpan={4} className="px-4 py-3">
+            <FailureBox failure={error} />
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 export const ImagesPanel = () => {
   const { data, failure, busy, reload } = useRemote<ReadonlyArray<RedroidImage>>(
     fetchUsableImages
@@ -35,6 +164,36 @@ export const ImagesPanel = () => {
 
   const [creating, setCreating] = useState<string | null>(null)
   const [created, setCreated] = useState<CreatedContainer | null>(null)
+  const [working, setWorking] = useState<{
+    readonly reference: string
+    readonly label: string
+  } | null>(null)
+  const [actionError, setActionError] = useState<{
+    readonly reference: string
+    readonly message: string
+    readonly hint: string
+  } | null>(null)
+
+  // 删镜像是一次会改本机的动作,所以跟容器那边一样:跑之前先记下"正在忙",
+  // 出错了留在那一行上,成功了就重新读一遍列表。
+  const remove = async (reference: string) => {
+    // 正开着这张镜像的创建表单的话,顺手关掉 —— 镜像待会儿就没了。
+    if (creating === reference) setCreating(null)
+    setWorking({ reference, label: "删除中…" })
+    setActionError(null)
+    try {
+      await removeImage(reference)
+      reload()
+    } catch (error) {
+      setActionError(
+        error instanceof ApiFailure
+          ? { reference, message: error.message, hint: error.hint }
+          : { reference, message: String(error), hint: "" }
+      )
+    } finally {
+      setWorking(null)
+    }
+  }
 
   const selected =
     creating === null
@@ -142,46 +301,30 @@ export const ImagesPanel = () => {
             </thead>
             <tbody>
               {data?.map((image) => (
-                <tr
+                <ImageRow
                   key={image.reference}
-                  className="border-t border-line transition hover:bg-panel-2/50"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className="font-mono text-[13px]"
-                        title={image.reference}
-                      >
-                        {image.reference}
-                      </span>
-                      <Badge tone={image.kind === "official" ? "ok" : "info"}>
-                        {image.kind === "official" ? "原版" : "合成"}
-                      </Badge>
-                    </div>
-                  </td>
-                  <td className="hidden px-4 py-3 text-muted sm:table-cell">
-                    {image.architecture}
-                  </td>
-                  <td className="px-4 py-3 text-right text-muted tabular-nums whitespace-nowrap">
-                    {formatSize(image.size)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Button
-                      tone="default"
-                      size="sm"
-                      className="border-brand/35 text-brand hover:bg-brand-soft"
-                      // 参数表还没到就先别开表单 —— 表单是照它生成的。
-                      disabled={creating !== null || parameters.data === null}
-                      onClick={() => {
-                        setCreated(null)
-                        setCreating(image.reference)
-                      }}
-                    >
-                      <Plus className="size-3.5" />
-                      创建容器
-                    </Button>
-                  </td>
-                </tr>
+                  image={image}
+                  // 参数表还没到就先别开表单 —— 表单是照它生成的。
+                  createDisabled={
+                    creating !== null || parameters.data === null
+                  }
+                  busyLabel={
+                    working?.reference === image.reference ? working.label : null
+                  }
+                  error={
+                    actionError?.reference === image.reference
+                      ? {
+                          message: actionError.message,
+                          hint: actionError.hint,
+                        }
+                      : null
+                  }
+                  onCreate={() => {
+                    setCreated(null)
+                    setCreating(image.reference)
+                  }}
+                  onRemove={() => void remove(image.reference)}
+                />
               ))}
             </tbody>
           </table>

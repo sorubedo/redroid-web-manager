@@ -27,7 +27,14 @@ import {
   type ComposeLayer,
 } from "./compose-image.js"
 import { DockerFailure, type DockerEndpoint } from "./docker-host.js"
-import { listBaseImages, listUsableImages } from "./images.js"
+import {
+  ImageInUse,
+  ImageNotFound,
+  NotARedroidImage,
+  listBaseImages,
+  listUsableImages,
+  removeRedroidImage,
+} from "./images.js"
 import { REDROID_PARAMETERS } from "./redroid-params.js"
 
 // 上传的每个 tar 最大多少。这些内容会先整个读进内存再拼成构建上下文,
@@ -71,6 +78,26 @@ const describeFailure = (
     return {
       status: 409,
       body: { message: error.message, hint: "这里只管理 redroid 容器。" },
+    }
+  }
+  if (error instanceof ImageNotFound) {
+    return { status: 404, body: { message: error.message, hint: "" } }
+  }
+  if (error instanceof NotARedroidImage) {
+    return {
+      status: 409,
+      body: { message: error.message, hint: "这里只管理 redroid 镜像。" },
+    }
+  }
+  // 镜像删不掉,是因为还挂着容器(跑着的、停着的都算)。Docker 自己会拦,
+  // 这里只负责告诉用户接下来该干什么。
+  if (error instanceof ImageInUse) {
+    return {
+      status: 409,
+      body: {
+        message: error.message,
+        hint: "先用「容器」那一页把用它的容器删掉,再回来删镜像。",
+      },
     }
   }
   if (error instanceof InvalidContainerSpec) {
@@ -127,6 +154,11 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   const containerId = (request: FastifyRequest): string =>
     (request.params as { id: string }).id
 
+  // 路径参数里的镜像引用。引用里有 `/` 和 `:`,前端那边是 encodeURIComponent
+  // 过的,Fastify 会再解回来,所以这里拿到的就是原样的引用。
+  const imageReference = (request: FastifyRequest): string =>
+    (request.params as { reference: string }).reference
+
   app.get("/api/health", () => ({ ok: true }))
 
   // 原版镜像 —— 用来选一张基础镜像去叠 Magisk。
@@ -139,6 +171,16 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   app.get(
     "/api/images/usable",
     handler(async () => ({ images: await listUsableImages(docker, endpoint) }))
+  )
+
+  // 删掉一张镜像(按标签)。还挂着容器的话 Docker 会拦,那是 409 ——
+  // 这里不 force,理由见 images.ts。
+  app.delete(
+    "/api/images/:reference",
+    handler(async (request) => {
+      await removeRedroidImage(docker, endpoint, imageReference(request))
+      return { ok: true }
+    })
   )
 
   app.get(

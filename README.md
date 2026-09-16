@@ -1,7 +1,8 @@
 # redroid-web-manager
 
-管理本机 Docker 里 redroid 容器的网页界面:看镜像、建容器、起停删、把 tar
-层叠成新镜像。后端是一个 Fastify 服务,前端是 React + Tailwind 的静态页面。
+管理本机 Docker 里 redroid 容器的网页界面:看/删镜像、建容器、起停删容器、
+把 tar 层叠成新镜像。后端是一个 Fastify 服务,前端是 React + Tailwind 的
+静态页面。
 
 ## 快速开始
 

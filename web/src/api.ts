@@ -162,6 +162,17 @@ export const fetchBaseImages = async (): Promise<
   return body.images ?? []
 }
 
+/**
+ * 从本机删掉一张镜像。传的是标签那种引用(redroid/redroid:xxx),引用里有
+ * `/` 和 `:`,所以整段要编码后再塞进路径。
+ *
+ * 还有容器在用这张镜像时后端会回 409 —— 那是"先删容器"的信号,不是出错。
+ */
+export const removeImage = (reference: string): Promise<void> =>
+  send("DELETE", `/api/images/${encodeURIComponent(reference)}`).then(
+    () => undefined
+  )
+
 export const fetchContainers = async (): Promise<
   ReadonlyArray<RedroidContainer>
 > => {
