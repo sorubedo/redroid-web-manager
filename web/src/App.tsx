@@ -1,12 +1,19 @@
-import { useState, type ReactElement } from "react"
+import { lazy, Suspense, useState, type ReactElement } from "react"
 import type { RedroidContainer } from "./api"
 import { ComposePanel } from "./ComposePanel"
 import { ContainersPanel } from "./ContainersPanel"
-import { DeviceConsole } from "./DeviceConsole"
 import { ImagesPanel } from "./ImagesPanel"
 import { Box, DroidMark, Layers, Moon, Sun, Terminal } from "./icons"
 import { useTheme } from "./theme"
 import { cx, IconButton } from "./ui"
+
+// 控制台里装着 Tango 的 ADB 和 scrcpy 那一整套(解码器、WebCodecs 封装),
+// 体积比管理台本身还大,而只有点「看屏幕」才用得到 —— 所以让它按需加载,
+// 首屏不背这个包袱。
+const DeviceConsole = lazy(async () => {
+  const module = await import("./DeviceConsole")
+  return { default: module.DeviceConsole }
+})
 
 type Tab = "containers" | "images" | "compose"
 
@@ -86,7 +93,15 @@ export const App = () => {
 
   if (console !== null) {
     return (
-      <DeviceConsole container={console} onClose={() => setConsole(null)} />
+      <Suspense
+        fallback={
+          <div className="flex min-h-dvh items-center justify-center text-sm text-muted">
+            正在加载控制台……
+          </div>
+        }
+      >
+        <DeviceConsole container={console} onClose={() => setConsole(null)} />
+      </Suspense>
     )
   }
 

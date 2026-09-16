@@ -208,6 +208,20 @@ export class ScrcpyScreen {
     this.key(keyCode, AndroidKeyEventAction.Up)
   }
 
+  /**
+   * 让设备转 90 度。
+   *
+   * 这是 scrcpy 的"请设备旋转"控制消息:它冻结当前显示方向并换成另一个。
+   * **是不是立刻看得见,取决于当前在前台的应用**:锁竖屏的界面(桌面、
+   * 设置之类)不会跟着转,打开支持横屏的应用(相册、视频)就能看到画面转
+   * 过去。这和按设备上的自动旋转键是一回事,不是这个按钮的毛病。
+   */
+  rotate(): void {
+    const controller = this.#client.controller
+    if (controller === undefined || this.#closed) return
+    void controller.rotateDevice()
+  }
+
   /** 把一段文字送进设备。走的是 scrcpy 的注入文本,不经过按键映射。 */
   text(text: string): void {
     const controller = this.#client.controller

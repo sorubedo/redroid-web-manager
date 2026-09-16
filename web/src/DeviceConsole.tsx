@@ -15,6 +15,7 @@ import {
   Expand,
   Home,
   Power,
+  Rotate,
   Screen,
   Spinner,
   Terminal,
@@ -86,11 +87,19 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   const [attempt, setAttempt] = useState(0)
 
   const [showShell, setShowShell] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  // 只剩画面:整页只留 canvas,别的都不显示。
+  const [screenOnly, setScreenOnly] = useState(false)
+  // 只剩画面时,退出按钮自动隐藏,别一直挡着。
+  const [showExit, setShowExit] = useState(true)
+  // 一句临时的提示(比如"设备没换方向")。
+  const [hint, setHint] = useState<string | null>(null)
 
   const root = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const outputRef = useRef<HTMLPreElement>(null)
+  const hideExitTimer = useRef<number | null>(null)
+  // 鼠标停在退出按钮上时不能把它藏掉 —— 不然刚要按就没了。
+  const overExit = useRef(false)
 
   const [command, setCommand] = useState("")
   const [output, setOutput] = useState("")
@@ -257,16 +266,53 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       canvas.removeEventListener("keyup", onKeyUp)
       canvas.remove()
     }
-  }, [screen])
+    // screenOnly 切换时这个 effect 必须重跑:换布局会把 stage 这个 div 整个
+    // 换掉(canvas 是它的子节点,跟着一起没了),得重新挂一次。
+  }, [screen, screenOnly])
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement !== null)
+      // 浏览器全屏被退出(Esc、或者系统抢走了)时,别把画面留在一个没有
+      // 任何控件的空白页上。
+      if (document.fullscreenElement === null) setScreenOnly(false)
     }
     document.addEventListener("fullscreenchange", onFullscreenChange)
     return () =>
       document.removeEventListener("fullscreenchange", onFullscreenChange)
   }, [])
+
+  // 只剩画面时,鼠标一动就露出退出按钮,停一会儿自己藏起来。
+  useEffect(() => {
+    if (!screenOnly) {
+      setShowExit(true)
+      return
+    }
+    const show = () => {
+      setShowExit(true)
+      if (hideExitTimer.current !== null) {
+        window.clearTimeout(hideExitTimer.current)
+      }
+      hideExitTimer.current = window.setTimeout(() => {
+        if (!overExit.current) setShowExit(false)
+      }, 4000)
+    }
+    show()
+    window.addEventListener("pointermove", show)
+    return () => {
+      window.removeEventListener("pointermove", show)
+      if (hideExitTimer.current !== null) {
+        window.clearTimeout(hideExitTimer.current)
+        hideExitTimer.current = null
+      }
+    }
+  }, [screenOnly])
+
+  // 提示自己消失,不用用户去关。
+  useEffect(() => {
+    if (hint === null) return
+    const timer = window.setTimeout(() => setHint(null), 8000)
+    return () => window.clearTimeout(timer)
+  }, [hint])
 
   // 有输出就跟着滚到底,不然跑个长命令得自己往下拖。
   useEffect(() => {
@@ -274,12 +320,25 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     if (element !== null) element.scrollTop = element.scrollHeight
   }, [output])
 
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement !== null) {
-      void document.exitFullscreen()
-    } else {
-      void root.current?.requestFullscreen()
-    }
+  /** 进"只剩画面":浏览器全屏 + 隐藏所有控件。全屏被拒也没关系,画面照样铺满。 */
+  const enterScreenOnly = () => {
+    setScreenOnly(true)
+    void root.current?.requestFullscreen().catch(() => {})
+  }
+
+  const exitScreenOnly = () => {
+    setScreenOnly(false)
+    if (document.fullscreenElement !== null) void document.exitFullscreen()
+  }
+
+  const rotate = () => {
+    if (screen === null) return
+    screen.rotate()
+    // 转不转是前台应用说了算:锁竖屏的界面不会动。先说清楚,免得用户
+    // 以为按钮坏了。
+    setHint(
+      "已经请设备转 90°。桌面这类锁竖屏的界面不会跟着转,打开支持横屏的应用(比如相册)就能看到画面转过去。"
+    )
   }
 
   const run = async () => {
@@ -316,6 +375,41 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         : screen === null
           ? { tone: "neutral" as const, label: "连接中" }
           : { tone: "ok" as const, label: "画面正常" }
+
+  // 只剩画面:整页就一个 canvas,别的什么都不留 —— 屏幕上多少像素,全给画面。
+  // 退出按钮平时藏着,鼠标一动才出来,免得一直挡着。
+  if (screenOnly) {
+    return (
+      <div
+        ref={root}
+        className="fixed inset-0 z-50 flex bg-black"
+        onDoubleClick={exitScreenOnly}
+      >
+        <div
+          ref={stage}
+          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
+        />
+        <button
+          type="button"
+          onClick={exitScreenOnly}
+          onPointerEnter={() => {
+            overExit.current = true
+            setShowExit(true)
+          }}
+          onPointerLeave={() => {
+            overExit.current = false
+          }}
+          className={cx(
+            "absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-3 py-1.5 text-xs text-white/90 backdrop-blur transition",
+            showExit ? "opacity-100" : "pointer-events-none opacity-0"
+          )}
+        >
+          <X className="size-3.5" />
+          退出全屏
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div ref={root} className="fixed inset-0 z-40 flex flex-col bg-app">
@@ -354,9 +448,9 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           <Terminal className="size-4" />
         </IconButton>
         <IconButton
-          onClick={toggleFullscreen}
-          title={isFullscreen ? "退出全屏" : "全屏"}
-          aria-label={isFullscreen ? "退出全屏" : "全屏"}
+          onClick={enterScreenOnly}
+          title="只剩画面(全屏)"
+          aria-label="只剩画面(全屏)"
           className="text-fg"
         >
           <Expand className="size-4" />
@@ -404,6 +498,14 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           </div>
         )}
       </div>
+
+      {hint !== null && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-20 flex justify-center px-4">
+          <p className="max-w-xl rounded-xl border border-line bg-panel/95 px-4 py-2 text-center text-xs leading-relaxed text-muted shadow-lg">
+            {hint}
+          </p>
+        </div>
+      )}
 
       {showShell && (
         <section className="shrink-0 border-t border-line bg-panel">
@@ -493,10 +595,17 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         />
         <span className="mx-1 h-8 w-px shrink-0 bg-line" />
         <ConsoleKey
+          icon={<Rotate className="size-5" />}
+          label="旋转"
+          title="请设备转 90°(当前界面锁竖屏的话不会跟着转)"
+          disabled={screen === null}
+          onClick={rotate}
+        />
+        <ConsoleKey
           icon={<Screen className="size-5" />}
-          label={isFullscreen ? "退出全屏" : "全屏"}
+          label="只剩画面"
           disabled={false}
-          onClick={toggleFullscreen}
+          onClick={enterScreenOnly}
         />
       </footer>
     </div>
@@ -507,16 +616,19 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
 const ConsoleKey = ({
   icon,
   label,
+  title,
   disabled,
   onClick,
 }: {
   readonly icon: React.ReactNode
   readonly label: string
+  readonly title?: string
   readonly disabled: boolean
   readonly onClick: () => void
 }) => (
   <button
     type="button"
+    title={title}
     disabled={disabled}
     onClick={onClick}
     className="inline-flex h-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-2.5 text-[10px] text-muted transition hover:bg-panel-2 hover:text-fg disabled:pointer-events-none disabled:opacity-40"

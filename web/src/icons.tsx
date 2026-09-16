@@ -110,6 +110,14 @@ export const Expand = (props: IconProps) => (
   </Svg>
 )
 
+/** 旋转。 */
+export const Rotate = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+    <path d="M20.5 4v5.5H15" />
+  </Svg>
+)
+
 export const Play = (props: IconProps) => (
   <Svg {...props}>
     <path d="M7 4.6 19 12 7 19.4V4.6Z" />
