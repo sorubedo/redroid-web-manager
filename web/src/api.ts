@@ -37,9 +37,18 @@ export interface RedroidContainer {
   readonly privileged: boolean
   readonly autoRemove: boolean
   readonly adbPort: number | null
-  readonly dataSource: string | null
+  readonly dataMount: DataMount | null
   readonly params: ReadonlyArray<ContainerParam>
 }
+
+// /data 挂到哪儿了。命名卷和宿主目录分开表达,界面才好分别显示
+// —— 卷要显示名字,不能显示 Docker 内部那个 /var/lib/docker/volumes/... 路径。
+export type DataMount =
+  | { readonly kind: "bind"; readonly source: string }
+  | { readonly kind: "volume"; readonly name: string }
+
+export const dataMountLabel = (mount: DataMount): string =>
+  mount.kind === "volume" ? `卷 ${mount.name}` : mount.source
 
 // 后端返回的错误:message 是一句话,hint 是该怎么办。
 export class ApiFailure extends Error {

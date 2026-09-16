@@ -1,4 +1,5 @@
 import type Docker from "dockerode"
+import type { DataMount } from "./containers.js"
 import {
   statusCodeOf,
   translateDockerError,
@@ -17,11 +18,6 @@ import type { BootParam } from "./redroid-params.js"
 //   4. 建完顺手启动 —— 一台不跑的 redroid 容器没有任何意义
 
 export type RestartPolicy = "no" | "always" | "unless-stopped" | "on-failure"
-
-// /data 怎么持久化。bind 是宿主机的目录,volume 是 Docker 自己管的卷。
-export type DataMount =
-  | { readonly kind: "bind"; readonly source: string }
-  | { readonly kind: "volume"; readonly name: string }
 
 export interface RedroidContainerSpec {
   readonly image: string

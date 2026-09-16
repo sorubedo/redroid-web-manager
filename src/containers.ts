@@ -29,6 +29,20 @@ export interface ContainerParam extends BootParam {
   readonly parameter: RedroidParameter | null
 }
 
+/**
+ * /data 挂到哪儿了。
+ *
+ * 两种形态分开表达,因为它们在 Docker 的 inspect 里长得很不一样:命名卷同时
+ * 带 Name(卷名)和一个 Source(宿主上的内部路径),宿主目录只有一个 Source。
+ * 混成一个字符串的话,显示卷的时候就会露出 /var/lib/docker/volumes/... 那种
+ * 对用户毫无意义的路径。
+ *
+ * 创建容器那边也用这个类型,读写两侧同一套词汇。
+ */
+export type DataMount =
+  | { readonly kind: "bind"; readonly source: string }
+  | { readonly kind: "volume"; readonly name: string }
+
 export interface RedroidContainer {
   readonly id: string
   readonly name: string
@@ -51,7 +65,7 @@ export interface RedroidContainer {
   /** 宿主端口 -> 容器里的 5555(adb);没映射就是 null */
   readonly adbPort: number | null
   /** /data 挂到哪儿了;没挂就是 null(不挂的话容器一删数据就没了) */
-  readonly dataSource: string | null
+  readonly dataMount: DataMount | null
   /** 命令行里带的 redroid 参数 */
   readonly params: ReadonlyArray<ContainerParam>
 }
@@ -113,7 +127,7 @@ export const listRedroidContainers = async (
       privileged: inspect.HostConfig?.Privileged === true,
       autoRemove: inspect.HostConfig?.AutoRemove === true,
       adbPort: adbPortOf(inspect.NetworkSettings, inspect.HostConfig),
-      dataSource: dataSourceOf(inspect.Mounts),
+      dataMount: dataMountOf(inspect.Mounts),
       params,
     })
   }
@@ -332,19 +346,34 @@ const restartPolicyOf = (
   return name === "on-failure" && retries > 0 ? `${name}:${retries}` : name
 }
 
-/** 官方推荐的 -v ~/data:/data,不挂的话容器一删数据就没了。 */
-const dataSourceOf = (
+/**
+ * 官方推荐的 -v ~/data:/data,不挂的话容器一删数据就没了。
+ *
+ * 命名卷要显示**名字**而不是 Source —— 后者是 Docker 在宿主机上放卷数据的
+ * 内部路径(/var/lib/docker/volumes/<名字>/_data),用户拿它没用,而且看着
+ * 像是个真目录,容易误会。
+ */
+const dataMountOf = (
   mounts:
     | ReadonlyArray<{
+        readonly Type?: string
         readonly Destination?: string
         readonly Source?: string
         readonly Name?: string
       }>
     | undefined
-): string | null => {
+): DataMount | null => {
   const mount = mounts?.find((candidate) => candidate.Destination === "/data")
   if (mount === undefined) return null
-  return mount.Source ?? mount.Name ?? null
+
+  if (mount.Type === "volume" && mount.Name !== undefined && mount.Name !== "") {
+    return { kind: "volume", name: mount.Name }
+  }
+  // 其余情况(宿主目录,以及少见的 tmpfs 之类)都按路径显示。
+  if (mount.Source !== undefined && mount.Source !== "") {
+    return { kind: "bind", source: mount.Source }
+  }
+  return null
 }
 
 /** 跑一个 dockerode 调用,失败就把错误翻译成人话再抛出去。 */

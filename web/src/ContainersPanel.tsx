@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react"
 import {
   ApiFailure,
+  dataMountLabel,
   fetchContainers,
   removeContainer,
   startContainer,
@@ -85,9 +86,9 @@ const Card = ({
     confirming === "stop"
       ? "这个容器带 --rm,停止之后 Docker 会把它删掉。确定停止?"
       : confirming === "remove"
-        ? container.dataSource === null
+        ? container.dataMount === null
           ? "容器会被删除,无法恢复。确定?"
-          : `容器会被删除。它挂的 /data(${container.dataSource})会留在宿主机上,数据不会丢。确定?`
+          : `容器会被删除,但它挂的 /data(${dataMountLabel(container.dataMount)})会留着,数据不会丢。确定?`
         : null
 
   const runConfirmed = () => {
@@ -119,8 +120,10 @@ const Card = ({
         <Row label="特权模式" warn={!container.privileged}>
           {container.privileged ? "已开启" : "没开,redroid 需要 --privileged"}
         </Row>
-        <Row label="data 持久化" warn={container.dataSource === null}>
-          {container.dataSource ?? "没挂 /data,容器一删数据就没了"}
+        <Row label="data 持久化" warn={container.dataMount === null}>
+          {container.dataMount === null
+            ? "没挂 /data,容器一删数据就没了"
+            : dataMountLabel(container.dataMount)}
         </Row>
         <Row label="创建时间">{formatTime(container.createdAt)}</Row>
       </div>
