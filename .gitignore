@@ -1,4 +1,5 @@
 node_modules/
 dist/
+assets/
 *.log
 .code-server/

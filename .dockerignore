@@ -12,3 +12,7 @@ node_modules
 **/node_modules
 dist
 **/dist
+
+# scrcpy 的 jar 也是:构建阶段自己下、自己验摘要,不认宿主机上那一份
+# (免得本地的旧版本或者半截文件被顺手打进镜像)。
+assets

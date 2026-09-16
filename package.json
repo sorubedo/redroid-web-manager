@@ -6,10 +6,11 @@
   "packageManager": "pnpm@12.4.2",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "concurrently -k -n server,web -c cyan,magenta \"pnpm dev:server\" \"pnpm dev:web\"",
+    "dev": "pnpm fetch:scrcpy && concurrently -k -n server,web -c cyan,magenta \"pnpm dev:server\" \"pnpm dev:web\"",
     "dev:server": "tsx watch src/index.ts",
     "dev:web": "pnpm --filter redroid-web-manager-web dev",
-    "build": "tsc && pnpm --filter redroid-web-manager-web build",
+    "fetch:scrcpy": "tsx scripts/fetch-scrcpy-server.ts",
+    "build": "pnpm fetch:scrcpy && tsc && pnpm --filter redroid-web-manager-web build",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit && pnpm --filter redroid-web-manager-web typecheck"
   },

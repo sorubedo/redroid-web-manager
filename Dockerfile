@@ -12,6 +12,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts ./scripts
 COPY web ./web
 RUN pnpm build
 
@@ -39,6 +40,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/web/dist ./web/dist
+# scrcpy 的服务端 jar:构建时下好、验过摘要,和镜像一起发出去 ——
+# 运行期不用出网,也不会出现"第一次看屏幕才去下 jar"这种事。
+COPY --from=build /app/assets ./assets
 
 USER root
 EXPOSE 3000

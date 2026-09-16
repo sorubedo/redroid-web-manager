@@ -134,10 +134,13 @@ const describeFailure = (
       },
     }
   }
-  // scrcpy 的 jar 下不下来。这个后端自己还能跑,缺的是外网,所以也是 503。
+  // 镜像里那份 scrcpy 的 jar 读不到或者摘要不对。这条路径正常永远不该走到
+  // —— jar 是构建时下好、验过、和镜像一起发出去的,走到这儿说明这次构建
+  // 有问题(或者有人动了容器里的文件)。是程序自己的毛病,所以是 500,
+  // 不是"依赖暂时不可用"那种 503。
   if (error instanceof ScrcpyServerUnavailable) {
     return {
-      status: 503,
+      status: 500,
       body: { message: error.message, hint: error.hint },
     }
   }
@@ -590,7 +593,8 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
 
   // scrcpy 的服务端(一个七百多 KB 的 jar)。前端要把它推到设备上,所以这里
   // 原样发给前端 —— 后端不碰设备,也不碰 scrcpy 协议。
-  // 第一次调用时会去 GitHub 下一份并缓存,之后都走缓存。
+  // 这份 jar 是构建时下好、打进镜像的,这里只负责读出来发过去:不出网,
+  // 也不写盘。
   app.get("/api/scrcpy/server", async (request, reply) => {
     try {
       const { version, jar } = await readScrcpyServer()
