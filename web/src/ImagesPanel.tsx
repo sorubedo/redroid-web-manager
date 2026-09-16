@@ -94,7 +94,7 @@ export const ImagesPanel = () => {
                 <td className="mono">{image.reference}</td>
                 <td>
                   <span className={`badge ${image.kind}`}>
-                    {image.kind === "official" ? "原版" : "已带 Magisk"}
+                    {image.kind === "official" ? "原版" : "派生"}
                   </span>
                 </td>
                 <td>{image.architecture}</td>

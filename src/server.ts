@@ -3,6 +3,7 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from "fastify"
+import multipart from "@fastify/multipart"
 import type Docker from "dockerode"
 import {
   ContainerNotFound,
@@ -20,9 +21,17 @@ import {
   NoFreeAdbPort,
   createRedroidContainer,
 } from "./create-container.js"
+import {
+  composeImage,
+  type ComposeLayer,
+} from "./compose-image.js"
 import { DockerFailure, type DockerEndpoint } from "./docker-host.js"
 import { listBaseImages, listUsableImages } from "./images.js"
 import { REDROID_PARAMETERS } from "./redroid-params.js"
+
+// 上传的每个 tar 最大多少。这些内容会先整个读进内存再拼成构建上下文,
+// 所以必须有上限 —— 不然一次大上传就能把后端进程撑爆。
+const MAX_LAYER_BYTES = 512 * 1024 * 1024
 
 // HTTP 接口层。它只做三件事:收请求、调用下面的模块、把结果或错误变回 JSON。
 // 不碰 Docker,也不懂业务。
@@ -84,6 +93,10 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   const { docker, endpoint } = options
   const app = Fastify({ logger: false })
 
+  app.register(multipart, {
+    limits: { fileSize: MAX_LAYER_BYTES, files: 16, fields: 10 },
+  })
+
   // 每个请求打一行,方便你对着浏览器确认请求真的到了后端
   app.addHook("onResponse", (request, reply) => {
     console.log(`${request.method} ${request.url} -> ${reply.statusCode}`)
@@ -141,6 +154,64 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
   // redroid 官方文档里的参数表。创建容器的表单是照着它生成的,
   // 所以不能由前端自己写一份 —— 两边会跑偏。
   app.get("/api/redroid-params", () => ({ parameters: REDROID_PARAMETERS }))
+
+  // 镜像合成台:收下基础镜像、输出标签和若干个 tar,交给 Docker 构建。
+  //
+  // 这个接口是**流式**的:响应一开头就定下来,然后一行行往外写 JSON,前端
+  // 边收边显示构建日志。正因为要边跑边说,它不能用上面那个 handler 包装
+  // (那套是"要么一个结果,要么一个错误")。
+  app.post("/api/compose", async (request, reply) => {
+    reply.hijack()
+    reply.raw.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache",
+    })
+
+    const send = (payload: unknown) => {
+      reply.raw.write(`${JSON.stringify(payload)}\n`)
+    }
+    const log = (message: string) => send({ type: "log", message })
+
+    try {
+      const layers: ComposeLayer[] = []
+      let base = ""
+      let target = ""
+
+      for await (const part of request.parts()) {
+        if (part.type === "field") {
+          if (part.fieldname === "base") base = String(part.value)
+          if (part.fieldname === "target") target = String(part.value)
+        } else {
+          const content = await part.toBuffer()
+          layers.push({ name: part.filename, content })
+          log(
+            `收到 ${part.filename}(${(content.byteLength / 1024 / 1024).toFixed(1)} MiB)`
+          )
+        }
+      }
+
+      const result = await composeImage(
+        docker,
+        endpoint,
+        { base, target, layers },
+        log
+      )
+      send({ type: "done", target: result.target, imageId: result.imageId })
+    } catch (error) {
+      const described = describeFailure(error)
+      const body = (described?.body ?? {
+        message: error instanceof Error ? error.message : String(error),
+        hint: "",
+      }) as { message?: string; hint?: string }
+      send({
+        type: "error",
+        message: body.message ?? "未知错误",
+        hint: body.hint ?? "",
+      })
+    } finally {
+      reply.raw.end()
+    }
+  })
 
   app.post(
     "/api/containers/:id/start",

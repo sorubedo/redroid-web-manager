@@ -1,8 +1,15 @@
 import { useState } from "react"
+import { ComposePanel } from "./ComposePanel"
 import { ContainersPanel } from "./ContainersPanel"
 import { ImagesPanel } from "./ImagesPanel"
 
-type Tab = "containers" | "images"
+type Tab = "containers" | "images" | "compose"
+
+const TABS: ReadonlyArray<{ readonly id: Tab; readonly label: string }> = [
+  { id: "containers", label: "容器" },
+  { id: "images", label: "镜像" },
+  { id: "compose", label: "合成台" },
+]
 
 export const App = () => {
   const [tab, setTab] = useState<Tab>("containers")
@@ -14,23 +21,21 @@ export const App = () => {
       </header>
 
       <nav className="tabs">
-        <button
-          type="button"
-          className={tab === "containers" ? "active" : undefined}
-          onClick={() => setTab("containers")}
-        >
-          容器
-        </button>
-        <button
-          type="button"
-          className={tab === "images" ? "active" : undefined}
-          onClick={() => setTab("images")}
-        >
-          镜像
-        </button>
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={tab === item.id ? "active" : undefined}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
 
-      {tab === "containers" ? <ContainersPanel /> : <ImagesPanel />}
+      {tab === "containers" && <ContainersPanel />}
+      {tab === "images" && <ImagesPanel />}
+      {tab === "compose" && <ComposePanel />}
     </main>
   )
 }

@@ -122,6 +122,16 @@ export const fetchUsableImages = async (): Promise<
   return body.images ?? []
 }
 
+/** 只能拿来当基础继续叠层的那部分(纯原版)。合成台用这个。 */
+export const fetchBaseImages = async (): Promise<
+  ReadonlyArray<RedroidImage>
+> => {
+  const body = (await getJson("/api/images/base")) as {
+    images?: ReadonlyArray<RedroidImage>
+  }
+  return body.images ?? []
+}
+
 export const fetchContainers = async (): Promise<
   ReadonlyArray<RedroidContainer>
 > => {
@@ -204,3 +214,61 @@ export const stateLabel = (state: string): string =>
           : state === "restarting"
             ? "重启中"
             : state
+
+// 合成台推进来的一行。后端是边构建边往响应里写这些的。
+export interface ComposeEvent {
+  readonly type: "log" | "done" | "error"
+  readonly message?: string
+  readonly hint?: string
+  readonly target?: string
+  readonly imageId?: string | null
+}
+
+// 把构建请求发出去,并把后端边跑边推过来的行交给 onEvent。
+//
+// 这里不用 fetch().json(),因为响应是**流**:整个构建过程会持续往里写,
+// 前端要边收边显示。普通 fetch 会把响应读完才返回,那样日志就变成构建结束
+// 后一次性冒出来了。
+export const composeImage = async (
+  form: FormData,
+  onEvent: (event: ComposeEvent) => void
+): Promise<void> => {
+  let response: Response
+  try {
+    response = await fetch("/api/compose", { method: "POST", body: form })
+  } catch {
+    throw new ApiFailure(OFFLINE_MESSAGE, OFFLINE_HINT)
+  }
+  if (!response.ok) throw await failureOf(response)
+
+  const reader = response.body?.getReader()
+  if (reader === undefined) {
+    throw new ApiFailure("这个浏览器读不了流式响应", "换一个现代浏览器试试。")
+  }
+
+  const decoder = new TextDecoder()
+  let buffered = ""
+
+  const emit = (line: string) => {
+    const text = line.trim()
+    if (text === "") return
+    try {
+      onEvent(JSON.parse(text) as ComposeEvent)
+    } catch {
+      onEvent({ type: "log", message: text })
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffered += decoder.decode(value, { stream: true })
+    let index = buffered.indexOf("\n")
+    while (index >= 0) {
+      emit(buffered.slice(0, index))
+      buffered = buffered.slice(index + 1)
+      index = buffered.indexOf("\n")
+    }
+  }
+  emit(buffered)
+}
