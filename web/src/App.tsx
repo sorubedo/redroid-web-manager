@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from "react"
+import type { RedroidContainer } from "./api"
 import { ComposePanel } from "./ComposePanel"
 import { ContainersPanel } from "./ContainersPanel"
+import { DeviceConsole } from "./DeviceConsole"
 import { ImagesPanel } from "./ImagesPanel"
 import { Box, DroidMark, Layers, Moon, Sun, Terminal } from "./icons"
 import { useTheme } from "./theme"
@@ -77,7 +79,16 @@ const Tabs = ({
 
 export const App = () => {
   const [tab, setTab] = useState<Tab>("containers")
+  // 控制台是整页的:开着的时候把管理台整个换掉,不是盖一层弹窗。
+  // 同时只开一台 —— adbd 同时只认一个客户端,开一堆只会互相挤。
+  const [console, setConsole] = useState<RedroidContainer | null>(null)
   const { theme, toggle } = useTheme()
+
+  if (console !== null) {
+    return (
+      <DeviceConsole container={console} onClose={() => setConsole(null)} />
+    )
+  }
 
   return (
     <div className="relative flex min-h-dvh flex-col">
@@ -112,7 +123,9 @@ export const App = () => {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {tab === "containers" && <ContainersPanel />}
+        {tab === "containers" && (
+          <ContainersPanel onOpenConsole={setConsole} />
+        )}
         {tab === "images" && <ImagesPanel />}
         {tab === "compose" && <ComposePanel />}
       </main>

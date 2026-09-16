@@ -63,6 +63,53 @@ export const Screen = (props: IconProps) => (
   </Svg>
 )
 
+export const ArrowLeft = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M19 12H5m6-7-7 7 7 7" />
+  </Svg>
+)
+
+/** Home 键。 */
+export const Home = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M4 11.4 12 4.5l8 6.9" />
+    <path d="M6.2 10.6V19h11.6v-8.4" />
+  </Svg>
+)
+
+/** 最近任务。 */
+export const Apps = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="4" y="4" width="7" height="7" rx="1.6" />
+    <rect x="13" y="4" width="7" height="7" rx="1.6" />
+    <rect x="4" y="13" width="7" height="7" rx="1.6" />
+    <rect x="13" y="13" width="7" height="7" rx="1.6" />
+  </Svg>
+)
+
+/** 音量。 */
+export const Volume = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+    <path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.4 6.5a8 8 0 0 1 0 11" />
+  </Svg>
+)
+
+/** 电源。 */
+export const Power = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M12 3v9" />
+    <path d="M6.8 6.8a7.5 7.5 0 1 0 10.4 0" />
+  </Svg>
+)
+
+/** 全屏。 */
+export const Expand = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+  </Svg>
+)
+
 export const Play = (props: IconProps) => (
   <Svg {...props}>
     <path d="M7 4.6 19 12 7 19.4V4.6Z" />

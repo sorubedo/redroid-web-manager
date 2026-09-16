@@ -12,7 +12,6 @@ import {
   type ContainerParam,
   type RedroidContainer,
 } from "./api"
-import { DevicePanel } from "./DevicePanel"
 import { Box, Play, Screen, Spinner, Stop, Trash } from "./icons"
 import {
   Badge,
@@ -337,7 +336,12 @@ const ContainerCard = ({
   )
 }
 
-export const ContainersPanel = () => {
+export const ContainersPanel = ({
+  onOpenConsole,
+}: {
+  /** 打开某台容器的控制台。控制台是整页的,所以由上层(App)来切。 */
+  readonly onOpenConsole: (container: RedroidContainer) => void
+}) => {
   const { data, failure, busy, reload } =
     useRemote<ReadonlyArray<RedroidContainer>>(fetchContainers)
 
@@ -350,10 +354,6 @@ export const ContainersPanel = () => {
     readonly message: string
     readonly hint: string
   } | null>(null)
-
-  // 打开设备视图的那台容器。同时只开一台 —— adbd 同时只认一个客户端,
-  // 开一堆只会互相挤。
-  const [opened, setOpened] = useState<RedroidContainer | null>(null)
 
   const act = async (id: string, label: string, run: () => Promise<void>) => {
     setWorking({ id, label })
@@ -432,14 +432,10 @@ export const ContainersPanel = () => {
                   removeContainer(container.id)
                 )
               }
-              onOpenScreen={() => setOpened(container)}
+              onOpenScreen={() => onOpenConsole(container)}
             />
           ))}
         </div>
-      )}
-
-      {opened !== null && (
-        <DevicePanel container={opened} onClose={() => setOpened(null)} />
       )}
     </>
   )
