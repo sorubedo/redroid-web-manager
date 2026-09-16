@@ -13,6 +13,7 @@
     "@headlessui/react": "^2.2.10",
     "@yume-chan/adb": "^3.0.0-beta.2",
     "@yume-chan/adb-scrcpy": "^3.0.0-beta.2",
+    "@yume-chan/pcm-player": "^3.0.0-beta.2",
     "@yume-chan/scrcpy": "^3.0.0-beta.2",
     "@yume-chan/scrcpy-decoder-webcodecs": "^3.0.0-beta.2",
     "@yume-chan/stream-extra": "^3.0.0-beta.2",

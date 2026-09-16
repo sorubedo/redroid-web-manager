@@ -18,20 +18,18 @@ import {
   WebGLVideoFrameRenderer,
 } from "@yume-chan/scrcpy-decoder-webcodecs"
 import { ApiFailure } from "../api"
+import { ScrcpySound, discard } from "./audio"
 
 // 浏览器里的 scrcpy 客户端。
 //
 // 一条完整链路是:推 scrcpy-server 到设备 -> 用 app_process 起它 -> 连它开
-// 的三个 socket(视频/控制)-> 把视频流喂给 WebCodecs 解码 -> 画到 canvas
-// 上;手指的动作反过来编成控制消息发回去。
+// 的几个 socket(视频/音频/控制)-> 视频画到 canvas 上、声音排进 Web Audio;
+// 手指的动作反过来编成控制消息发回去。
 //
 // 这些 socket 全都走前面那条 WebSocket 通道,所以后端只看到字节。
 // scrcpy 默认走 `adb reverse`(要客户端先在本机监听一个端口),浏览器做不到,
 // Tango 发现 reverse 不被支持会自动改用 forward 隧道 —— 也就是直接连设备上
 // 的 socket,正好是我们要的。
-
-/** 必须和 src/scrcpy-server.ts 里的版本一致。 */
-const SCRCPY_VERSION = "4.1"
 
 /** 画面最大边长。手机上 1080 的原生分辨率推到浏览器上,流量和 CPU 都不划算。 */
 const DEFAULT_MAX_SIZE = 1280
@@ -60,36 +58,32 @@ export class ScrcpyUnsupported extends Error {
  * 直接用它验证并发这类事。
  */
 export const startScrcpySession = async (adb: Adb) => {
-  const jar = await fetchServerJar()
-
-  // 每个会话一个 scid。scrcpy 用它给 socket 起名(localabstract:scrcpy_xxxxxxxx);
-  // 不指定的话所有实例都绑同一个名字,同时打开时后一个会直接
-  // `Address already in use` 退出 —— 于是多个页面只是接到了同一个 server 的
-  // 流上:看着"也行",但同一瞬间点两下就有一个打不开。
+  // scrcpy 用 scid 给 socket 起名(localabstract:scrcpy_xxxxxxxx)。不指定的话
+  // 所有会话绑同一个名字,同时打开时后一个会 `Address already in use` 退出,
+  // 于是几个页面其实接在同一个 server 上。
   const scid = ScrcpyInstanceId.random()
   const scidHex = scid.value.toString(16).padStart(8, "0")
 
+  const options = new AdbScrcpyOptionsLatest({
+    video: true,
+    audio: true,
+    control: true,
+    // 4.1 把编码格式做成了必填项(以前有默认值)。
+    videoCodec: "h264",
+    maxSize: DEFAULT_MAX_SIZE,
+    videoBitRate: VIDEO_BIT_RATE,
+    scid,
+  })
+
+  // options 先建出来是因为它自己认一个 scrcpy 版本号(这个库每个版本一个
+  // 类),后端内置的 jar 得和它对得上。
+  const jar = await fetchServerJar(options.version)
+
   // jar 也按会话分开:同一个文件被两个会话同时写会串(ADB 的 sync 不是原子的)。
-  // server 退出时会删掉自己那一份(路径是它从 classpath 推出来的),不会攒垃圾。
   const serverPath = DefaultServerPath.replace(/\.jar$/, `-${scidHex}.jar`)
   await AdbScrcpyClient.pushServer(adb, jar, serverPath)
 
-  const client = await AdbScrcpyClient.start(
-    adb,
-    serverPath,
-    new AdbScrcpyOptionsLatest({
-      video: true,
-      // 声音先不要:浏览器这边要额外接一个解码器和播放器,而且容器里
-      // 那台"手机"多数时候也没人听。
-      audio: false,
-      control: true,
-      // 4.1 把编码格式做成了必填项(以前有默认值)。
-      videoCodec: "h264",
-      maxSize: DEFAULT_MAX_SIZE,
-      videoBitRate: VIDEO_BIT_RATE,
-      scid,
-    })
-  )
+  const client = await AdbScrcpyClient.start(adb, serverPath, options)
 
   const video = await client.videoStream
   if (video === undefined) {
@@ -125,27 +119,30 @@ export class ScrcpyScreen {
       renderer,
     })
 
-    // 这条 pipe 一直跑到会话结束。关掉之后再去读会抛,所以不接它的结果 ——
+    // 这条 pipe 一直跑到会话结束,关掉之后再去读会抛,所以不接结果 ——
     // 真正的错误会从 client.exited 那边冒出来。
     void video.stream.pipeTo(decoder.writable).catch(() => {})
 
-    return new ScrcpyScreen(client, decoder, renderer)
+    return new ScrcpyScreen(client, decoder, renderer, await attachSound(client))
   }
 
   readonly #client: AdbScrcpyClient<AdbScrcpyOptionsLatest>
   readonly #decoder: WebCodecsVideoDecoder
   readonly #renderer: CanvasVideoFrameRenderer
+  readonly #sound: ScrcpySound | null
 
   #closed = false
 
   private constructor(
     client: AdbScrcpyClient<AdbScrcpyOptionsLatest>,
     decoder: WebCodecsVideoDecoder,
-    renderer: CanvasVideoFrameRenderer
+    renderer: CanvasVideoFrameRenderer,
+    sound: ScrcpySound | null
   ) {
     this.#client = client
     this.#decoder = decoder
     this.#renderer = renderer
+    this.#sound = sound
   }
 
   get canvas(): HTMLCanvasElement | OffscreenCanvas {
@@ -154,6 +151,19 @@ export class ScrcpyScreen {
 
   get size(): ScreenSize {
     return { width: this.#decoder.width, height: this.#decoder.height }
+  }
+
+  /** 设备有没有给出声音(浏览器不支持解码、或者设备那边起不了音频时就没有)。 */
+  get hasSound(): boolean {
+    return this.#sound !== null
+  }
+
+  get muted(): boolean {
+    return this.#sound?.muted ?? true
+  }
+
+  setMuted(muted: boolean): void {
+    this.#sound?.setMuted(muted)
   }
 
   /** 画面尺寸变了(旋转、改分辨率)。返回一个取消订阅的函数。 */
@@ -258,18 +268,51 @@ export class ScrcpyScreen {
     if (this.#closed) return
     this.#closed = true
     this.#decoder.dispose()
+    this.#sound?.close()
     await this.#client.close()
   }
 }
 
 /**
- * 后端缓存的那份 scrcpy-server。
+ * 接上设备的声音。
+ *
+ * 放不出来的话(浏览器不支持,或者编码没接)也得把流读掉。
+ */
+const attachSound = async (
+  client: AdbScrcpyClient<AdbScrcpyOptionsLatest>
+): Promise<ScrcpySound | null> => {
+  let metadata
+  try {
+    metadata = await client.audioStream
+  } catch {
+    // 声音拿不到不该影响看屏幕。
+    return null
+  }
+  if (metadata === undefined || metadata.type !== "success") return null
+
+  if (!ScrcpySound.canPlay(metadata.codec)) {
+    void discard(metadata.stream)
+    return null
+  }
+
+  const sound = new ScrcpySound(metadata.codec)
+  void sound.play(metadata.stream)
+  return sound
+}
+
+/**
+ * 后端内置的那份 scrcpy-server(跟着镜像一起发出去的那个 jar)。
+ *
+ * 期望的版本号是问 options 要的,不再手抄一份常量 —— 库认 4.2 的时候这里
+ * 跟着变成 4.2。
  *
  * 返回类型得顺着 Tango 要的那一套写:stream-extra 里"它包的 DOM 类型"和
  * "它继承的全局类"是两个不兼容的声明(closed 的返回差一个 undefined),
  * 运行期是同一个东西,所以这里只做一次类型转换。
  */
-const fetchServerJar = async (): Promise<
+const fetchServerJar = async (
+  expectedVersion: string
+): Promise<
   ReadableStream<MaybeConsumable<Uint8Array>>
 > => {
   let response: Response
@@ -294,11 +337,11 @@ const fetchServerJar = async (): Promise<
   }
 
   const version = response.headers.get("X-Scrcpy-Version")
-  if (version !== null && version !== SCRCPY_VERSION) {
+  if (version !== null && version !== expectedVersion) {
     // 版本对不上时最坏的情况是"能连上但画面是花的",查起来很费劲。
     // 这里直接拦住,让它变成一个明确的错误。
     throw new ScrcpyUnsupported(
-      `后端给的是 scrcpy ${version},前端只认 ${SCRCPY_VERSION}。两边得一起升级。`
+      `后端内置的是 scrcpy ${version},这个页面只认 ${expectedVersion}。刷新一下页面;还这样就说明前后端没配上。`
     )
   }
 

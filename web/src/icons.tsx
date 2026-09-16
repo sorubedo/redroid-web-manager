@@ -95,6 +95,14 @@ export const Volume = (props: IconProps) => (
   </Svg>
 )
 
+/** 静音。 */
+export const VolumeOff = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+    <path d="m16 10 5 5M21 10l-5 5" />
+  </Svg>
+)
+
 /** 电源。 */
 export const Power = (props: IconProps) => (
   <Svg {...props}>

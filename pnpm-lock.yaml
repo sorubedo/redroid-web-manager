@@ -227,6 +227,9 @@ importers:
       '@yume-chan/adb-scrcpy':
         specifier: ^3.0.0-beta.2
         version: 3.0.0-beta.2
+      '@yume-chan/pcm-player':
+        specifier: ^3.0.0-beta.2
+        version: 3.0.0-beta.2
       '@yume-chan/scrcpy':
         specifier: ^3.0.0-beta.2
         version: 3.0.0-beta.2
@@ -982,6 +985,9 @@ packages:
 
   '@yume-chan/no-data-view@3.0.0-beta.2':
     resolution: {integrity: sha512-+YaNDEhEiW6JM4DTeIkr7twls+bLjZlRqi9KFR17y9hASAnRNGVUVwYntvozCw5cfCDxjRgFdGYRRSThGq3x+A==}
+
+  '@yume-chan/pcm-player@3.0.0-beta.2':
+    resolution: {integrity: sha512-GiGcunynhvpOl8C2Bc80WnZIo4hoNL8BU2ON5aHbB6W69KSgnRcDYFBE9djRgUKGaPLiUh0U5X7deOgea59m4g==}
 
   '@yume-chan/scrcpy-decoder-shared@3.0.0-beta.2':
     resolution: {integrity: sha512-YH22RYdxxi5qKJF8UE+llfquhGjqSFFvf7iVOn92JSQOZU2yEeSG/45ma/vAxqhBOrSj+2aqX47mdhxjHgQ7aQ==}
@@ -2414,6 +2420,8 @@ snapshots:
       '@yume-chan/no-data-view': 3.0.0-beta.2
 
   '@yume-chan/no-data-view@3.0.0-beta.2': {}
+
+  '@yume-chan/pcm-player@3.0.0-beta.2': {}
 
   '@yume-chan/scrcpy-decoder-shared@3.0.0-beta.2':
     dependencies:

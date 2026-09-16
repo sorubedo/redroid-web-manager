@@ -20,6 +20,7 @@ import {
   Spinner,
   Terminal,
   Volume,
+  VolumeOff,
   X,
 } from "./icons"
 import { Badge, Button, controlClass, cx, IconButton } from "./ui"
@@ -88,6 +89,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   const [attempt, setAttempt] = useState(0)
 
   const [showShell, setShowShell] = useState(false)
+  const [muted, setMuted] = useState(false)
   // 只剩画面:整页只留 canvas,别的都不显示。
   const [screenOnly, setScreenOnly] = useState(false)
   // 一句临时的提示(比如"设备没换方向")。
@@ -152,6 +154,11 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       opened?.close()
     }
   }, [container.name, attempt])
+
+  // 声音跟着按钮走。会话是新起的(重来一次)时也按当前这个状态来。
+  useEffect(() => {
+    screen?.setMuted(muted)
+  }, [screen, muted])
 
   /**
    * 把解码器的画布挂进页面,顺便把输入接上。
@@ -617,6 +624,25 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           onClick={() => screen?.tapKey(AndroidKeyCode.Power)}
         />
         <span className="mx-1 h-8 w-px shrink-0 bg-line" />
+        <ConsoleKey
+          icon={
+            muted ? (
+              <VolumeOff className="size-5" />
+            ) : (
+              <Volume className="size-5" />
+            )
+          }
+          label={muted ? "已静音" : "声音"}
+          title={
+            screen?.hasSound === true
+              ? muted
+                ? "打开声音"
+                : "静音"
+              : "这台上没有声音(浏览器不支持,或者设备那边起不来)"
+          }
+          disabled={screen?.hasSound !== true}
+          onClick={() => setMuted((current) => !current)}
+        />
         <ConsoleKey
           icon={<Rotate className="size-5" />}
           label="旋转"
