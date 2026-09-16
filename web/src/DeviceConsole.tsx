@@ -89,17 +89,12 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   const [showShell, setShowShell] = useState(false)
   // 只剩画面:整页只留 canvas,别的都不显示。
   const [screenOnly, setScreenOnly] = useState(false)
-  // 只剩画面时,退出按钮自动隐藏,别一直挡着。
-  const [showExit, setShowExit] = useState(true)
   // 一句临时的提示(比如"设备没换方向")。
   const [hint, setHint] = useState<string | null>(null)
 
   const root = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const outputRef = useRef<HTMLPreElement>(null)
-  const hideExitTimer = useRef<number | null>(null)
-  // 鼠标停在退出按钮上时不能把它藏掉 —— 不然刚要按就没了。
-  const overExit = useRef(false)
 
   const [command, setCommand] = useState("")
   const [output, setOutput] = useState("")
@@ -223,6 +218,9 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       }
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      // 只剩画面时 Esc 是"退出",不该再当成 Android 的返回键 —— 交给上面
+      // 那个捕获阶段的监听器。
+      if (event.key === "Escape" && screenOnly) return
       const keyCode = KEY_CODES[event.key]
       if (keyCode !== undefined) {
         event.preventDefault()
@@ -281,36 +279,31 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       document.removeEventListener("fullscreenchange", onFullscreenChange)
   }, [])
 
-  // 只剩画面时,鼠标一动就露出退出按钮,停一会儿自己藏起来。
+  /**
+   * 只剩画面时怎么退出。
+   *
+   * 主路径是 Esc:浏览器在全屏状态下自己吃掉 Esc 并退出全屏,`fullscreenchange`
+   * 那边跟着收起这个模式。但**全屏请求有可能被拒**(比如嵌在 iframe 里),
+   * 那时 Esc 会送到页面上来 —— 这里兜住,不然用户就被关在一个没有出口的
+   * 画面里了。用捕获阶段,抢在画面那个 keydown 之前处理。
+   */
   useEffect(() => {
-    if (!screenOnly) {
-      setShowExit(true)
-      return
-    }
-    const show = () => {
-      setShowExit(true)
-      if (hideExitTimer.current !== null) {
-        window.clearTimeout(hideExitTimer.current)
-      }
-      hideExitTimer.current = window.setTimeout(() => {
-        if (!overExit.current) setShowExit(false)
-      }, 4000)
-    }
-    show()
-    window.addEventListener("pointermove", show)
-    return () => {
-      window.removeEventListener("pointermove", show)
-      if (hideExitTimer.current !== null) {
-        window.clearTimeout(hideExitTimer.current)
-        hideExitTimer.current = null
+    if (!screenOnly) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      if (document.fullscreenElement === null) {
+        event.preventDefault()
+        setScreenOnly(false)
       }
     }
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
   }, [screenOnly])
 
   // 提示自己消失,不用用户去关。
   useEffect(() => {
     if (hint === null) return
-    const timer = window.setTimeout(() => setHint(null), 8000)
+    const timer = window.setTimeout(() => setHint(null), 5000)
     return () => window.clearTimeout(timer)
   }, [hint])
 
@@ -323,6 +316,8 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   /** 进"只剩画面":浏览器全屏 + 隐藏所有控件。全屏被拒也没关系,画面照样铺满。 */
   const enterScreenOnly = () => {
     setScreenOnly(true)
+    // 一句就走的话,用户不知道还能怎么出来。
+    setHint("按 Esc 退出全屏")
     void root.current?.requestFullscreen().catch(() => {})
   }
 
@@ -336,9 +331,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     screen.rotate()
     // 转不转是前台应用说了算:锁竖屏的界面不会动。先说清楚,免得用户
     // 以为按钮坏了。
-    setHint(
-      "已经请设备转 90°。桌面这类锁竖屏的界面不会跟着转,打开支持横屏的应用(比如相册)就能看到画面转过去。"
-    )
+    setHint("已请设备旋转。锁竖屏的应用(桌面)不会跟着转,相册这类会。")
   }
 
   const run = async () => {
@@ -383,30 +376,21 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       <div
         ref={root}
         className="fixed inset-0 z-50 flex bg-black"
+        // 触摸设备上没有 Esc 键,双击是唯一的出口。会顺带往设备发两下点按,
+        // 但总比关在里面出不来强。
         onDoubleClick={exitScreenOnly}
       >
         <div
           ref={stage}
           className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
         />
-        <button
-          type="button"
-          onClick={exitScreenOnly}
-          onPointerEnter={() => {
-            overExit.current = true
-            setShowExit(true)
-          }}
-          onPointerLeave={() => {
-            overExit.current = false
-          }}
-          className={cx(
-            "absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-3 py-1.5 text-xs text-white/90 backdrop-blur transition",
-            showExit ? "opacity-100" : "pointer-events-none opacity-0"
-          )}
-        >
-          <X className="size-3.5" />
-          退出全屏
-        </button>
+        {hint !== null && (
+          <p className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-4">
+            <span className="rounded-full bg-black/70 px-3.5 py-1.5 text-xs text-white/90 backdrop-blur">
+              {hint}
+            </span>
+          </p>
+        )}
       </div>
     )
   }
