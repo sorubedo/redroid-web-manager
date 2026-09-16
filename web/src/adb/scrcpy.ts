@@ -267,6 +267,20 @@ export class ScrcpyScreen {
   }
 
   /**
+   * 鼠标右键:安卓的"返回"(屏幕黑着的时候则是点亮屏幕)。
+   *
+   * 走的是 scrcpy 的 back_or_screen_on 控制消息,不是直接发一个 BACK 键码 ——
+   * 黑屏时那个键码不会把屏幕点亮,官方 scrcpy 桌面版的右键用的就是这条。
+   */
+  backOrScreenOn(pressed: boolean): void {
+    const controller = this.#client.controller
+    if (controller === undefined || this.#closed) return
+    void controller.backOrScreenOn(
+      pressed ? AndroidKeyEventAction.Down : AndroidKeyEventAction.Up
+    )
+  }
+
+  /**
    * 让设备转 90 度。
    *
    * 这是 scrcpy 的"请设备旋转"控制消息:它冻结当前显示方向并换成另一个。

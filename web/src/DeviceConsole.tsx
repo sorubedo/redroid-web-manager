@@ -16,6 +16,7 @@ import {
   Expand,
   Home,
   Power,
+  Refresh,
   Rotate,
   Screen,
   Spinner,
@@ -107,6 +108,10 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
 
   const root = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
+  // 画面(canvas)挂在它里面,而不是直接挂在 stage 上。canvas 是解码器自己
+  // new 出来的,这个 effect 得用 replaceChildren 把它塞进去 —— 直接对 stage
+  // 动手的话,React 渲染的那些兄弟节点(比如断连提示)会被一起清掉。
+  const canvasHost = useRef<HTMLDivElement>(null)
   const outputRef = useRef<HTMLPreElement>(null)
 
   const [command, setCommand] = useState("")
@@ -220,10 +225,15 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
    * 监听器是直接挂在 canvas 上的,不走 React —— 因为这块 canvas 是解码器
    * 自己 new 出来的,不归 React 管。挂在 canvas 上也正好保证坐标量的是
    * 画面本身,而不是外层盒子。
+   *
+   * canvas 塞进 canvasHost(一个 display: contents 的空盒子),量的还是
+   * stage 这个带 padding 的外层盒子。两件事分开是为了 replaceChildren 只
+   * 清掉画面,不把 React 渲染的提示条一起清掉。
    */
   useEffect(() => {
     const host = stage.current
-    if (host === null || screen === null) return
+    const mount = canvasHost.current
+    if (host === null || mount === null || screen === null) return
 
     const canvas = screen.canvas
     if (!(canvas instanceof HTMLCanvasElement)) {
@@ -238,7 +248,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     // 真正的大小由下面的 fit() 定。
     canvas.className = "max-h-full max-w-full touch-none select-none outline-none"
     canvas.tabIndex = 0
-    host.replaceChildren(canvas)
+    mount.replaceChildren(canvas)
     setScreenSize(screen.size)
 
     /**
@@ -291,10 +301,31 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       }
     }
 
+    // 鼠标的三个键各干各的:
+    //   左键(以及触摸、触控笔) -> 点按和拖动,就是手指按在设备上;
+    //   右键                     -> 安卓的"返回"(黑屏时点亮屏幕),和官方
+    //                               scrcpy 桌面版的默认映射一致;
+    //   别的键                   -> 先不管。
+    // 浏览器自己的右键菜单在下面被挡掉了。
+    let rightDown = false
+    // 真的发过"按下"的那些指针。抬起得配对着发,而且不能让右键、中键漏到
+    // 下面那条触摸的路里 —— 不然设备会收到一次没头没脑的抬手,正按着的
+    // 手指也会被这一下点断。
+    const touching = new Set<number>()
+
     const onPointerDown = (event: PointerEvent) => {
       event.preventDefault()
-      canvas.setPointerCapture(event.pointerId)
       canvas.focus({ preventScroll: true })
+      if (event.button === 2) {
+        if (!rightDown) {
+          rightDown = true
+          screen.backOrScreenOn(true)
+        }
+        return
+      }
+      if (event.button !== 0) return
+      canvas.setPointerCapture(event.pointerId)
+      touching.add(event.pointerId)
       const point = pointOf(event)
       if (point !== null) screen.touch("down", point.x, point.y)
     }
@@ -305,10 +336,20 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       if (point !== null) screen.touch("move", point.x, point.y)
     }
     const finishPointer = (event: PointerEvent) => {
-      const point = pointOf(event)
       if (canvas.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId)
       }
+      // 右键松手 -> 设备的返回键跟着松手。pointercancel 的 button 是 -1,
+      // 所以这里还得看一眼上面那面旗子:漏掉这一下,设备那边的返回键就会
+      // 一直按着不放。
+      if (event.button === 2 || (rightDown && event.type === "pointercancel")) {
+        rightDown = false
+        screen.backOrScreenOn(false)
+      }
+      // 剩下的只处理左键(触摸)那一次的收尾。
+      if (event.type === "pointerup" && event.button !== 0) return
+      if (!touching.delete(event.pointerId)) return
+      const point = pointOf(event)
       if (point !== null) screen.touch("up", point.x, point.y)
     }
     const onWheel = (event: WheelEvent) => {
@@ -317,6 +358,11 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       if (point !== null) {
         screen.scroll(point.x, point.y, event.deltaX, event.deltaY)
       }
+    }
+    const onContextMenu = (event: MouseEvent) => {
+      // 右键在这个画面上是"返回"(见 onPointerDown),别让它再弹出浏览器
+      // 自己那个菜单。页面别处(比如命令输入框)的右键菜单照常。
+      event.preventDefault()
     }
     const onKeyDown = (event: KeyboardEvent) => {
       // 只剩画面时 Esc 是"退出",不该再当成 Android 的返回键 —— 交给上面
@@ -355,6 +401,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     canvas.addEventListener("pointerup", finishPointer)
     canvas.addEventListener("pointercancel", finishPointer)
     canvas.addEventListener("wheel", onWheel, { passive: false })
+    canvas.addEventListener("contextmenu", onContextMenu)
     canvas.addEventListener("keydown", onKeyDown)
     canvas.addEventListener("keyup", onKeyUp)
 
@@ -369,6 +416,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       canvas.removeEventListener("pointerup", finishPointer)
       canvas.removeEventListener("pointercancel", finishPointer)
       canvas.removeEventListener("wheel", onWheel)
+      canvas.removeEventListener("contextmenu", onContextMenu)
       canvas.removeEventListener("keydown", onKeyDown)
       canvas.removeEventListener("keyup", onKeyUp)
       canvas.remove()
@@ -428,11 +476,6 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     void root.current?.requestFullscreen().catch(() => {})
   }
 
-  const exitScreenOnly = () => {
-    setScreenOnly(false)
-    if (document.fullscreenElement !== null) void document.exitFullscreen()
-  }
-
   const rotate = () => {
     if (screen === null) return
     screen.rotate()
@@ -476,21 +519,81 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           ? { tone: "neutral" as const, label: "连接中" }
           : { tone: "ok" as const, label: "画面正常" }
 
+  /**
+   * 画面顶上那一条:连接中、断了、直接失败都在这儿说。
+   *
+   * 位置固定在画面最上面、水平居中,而且**全屏(只剩画面)时也照摆** ——
+   * 以前那一版全屏时不显示任何东西,画面一断,屏幕上就剩一片黑,连重连的
+   * 按钮都找不到,只能靠双击(还容易误触)退出来。
+   *
+   * 内容就这一份,两种模式各摆一次(见 noticeLayer)。
+   */
+  const notice =
+    failure !== null ? (
+      <div className="pointer-events-auto animate-rise max-w-md rounded-xl border border-danger/30 bg-panel/95 px-4 py-3 text-center text-sm shadow-lg backdrop-blur">
+        <p className="text-danger">{failure.message}</p>
+        {failure.hint !== "" && (
+          <p className="mt-1.5 text-xs text-muted">{failure.hint}</p>
+        )}
+        <Button
+          size="sm"
+          className="mt-3"
+          onClick={() => setAttempt((n) => n + 1)}
+        >
+          <Refresh className="size-3.5" />
+          重来一次
+        </Button>
+      </div>
+    ) : screenGone ? (
+      <div className="pointer-events-auto animate-rise flex max-w-md flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-xl border border-line bg-panel/95 px-4 py-2.5 text-sm text-muted shadow-lg backdrop-blur">
+        <span>画面断了。</span>
+        <Button size="sm" onClick={() => setAttempt((n) => n + 1)}>
+          <Refresh className="size-3.5" />
+          重来一次
+        </Button>
+      </div>
+    ) : screen === null ? (
+      <div className="animate-rise flex flex-col items-center gap-2 rounded-xl bg-black/50 px-4 py-3 text-center text-sm text-muted">
+        <Spinner className="size-5 animate-spin" />
+        <span>正在准备画面……</span>
+        <span className="text-[11px] text-faint">
+          设备那边要起一个编码器,第一次会慢几秒
+        </span>
+      </div>
+    ) : null
+
+  // 把提示钉在画面区域的最上面。这一层自己不拦鼠标(pointer-events-none),
+  // 不然会挡住画面上的操作;里面的卡片自己把事件收回来(pointer-events-auto),
+  // 重连按钮才点得到。
+  const noticeLayer =
+    notice === null ? null : (
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-4">
+        {notice}
+      </div>
+    )
+
   // 只剩画面:整页就一个 canvas,别的什么都不留 —— 屏幕上多少像素,全给画面。
-  // 退出按钮平时藏着,鼠标一动才出来,免得一直挡着。
+  // 全屏里一个按钮都不挂,退出就靠 Esc(浏览器自己会退出全屏,fullscreenchange
+  // 那边跟着收;全屏请求被拒的场合由上面那个捕获阶段的监听器兜住)。
   if (screenOnly) {
     return (
       <div
         ref={root}
         className="fixed inset-0 z-50 flex bg-black"
-        // 触摸设备上没有 Esc 键,双击是唯一的出口。会顺带往设备发两下点按,
-        // 但总比关在里面出不来强。
-        onDoubleClick={exitScreenOnly}
+        // 在这个界面上右键是安卓的"返回",别让浏览器自己的菜单盖上来。
+        onContextMenu={(event) => event.preventDefault()}
       >
         <div
           ref={stage}
-          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
-        />
+          className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
+        >
+          {/* contents:这层盒子自己不参与排版,canvas 在里面就还是 stage 的
+              直接子元素,能继续被居中、按比例缩放。 */}
+          <div ref={canvasHost} className="contents" />
+          {/* 断了、失败、连接中,全屏时也照样说 —— 不然画面一断,屏幕上就
+              只剩一片黑,连重连的按钮都找不到。 */}
+          {noticeLayer}
+        </div>
         {hint !== null && (
           <p className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-4">
             <span className="rounded-full bg-black/70 px-3.5 py-1.5 text-xs text-white/90 backdrop-blur">
@@ -552,42 +655,14 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         ref={stage}
         // 画面区域:撑满剩下的地方,黑底居中。canvas 自己按比例缩放,
         // 这里不许出现滚动条,也不许裁。
-        className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black p-2 sm:p-4"
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black p-2 sm:p-4"
+        // 右键落在画面上(包括画面外那圈黑边)是安卓的"返回",不是浏览器菜单。
+        onContextMenu={(event) => event.preventDefault()}
       >
-        {failure !== null && (
-          <div className="max-w-md text-center text-sm">
-            <p className="text-danger">{failure.message}</p>
-            {failure.hint !== "" && (
-              <p className="mt-2 text-muted">{failure.hint}</p>
-            )}
-            <Button
-              size="sm"
-              className="mt-4"
-              onClick={() => setAttempt((n) => n + 1)}
-            >
-              重来一次
-            </Button>
-          </div>
-        )}
-
-        {failure === null && screenGone && (
-          <div className="flex flex-col items-center gap-3 text-sm text-muted">
-            <span>画面断了。</span>
-            <Button size="sm" onClick={() => setAttempt((n) => n + 1)}>
-              重来一次
-            </Button>
-          </div>
-        )}
-
-        {failure === null && !screenGone && screen === null && (
-          <div className="flex flex-col items-center gap-3 text-sm text-muted">
-            <Spinner className="size-5 animate-spin" />
-            <span>正在准备画面……</span>
-            <span className="text-[11px] text-faint">
-              设备那边要起一个编码器,第一次会慢几秒
-            </span>
-          </div>
-        )}
+        {/* 见上面 screenOnly 那份的同名节点:canvas 有自己的一块地方,
+            不会被提示条挤掉,也不会反过来把它清掉。 */}
+        <div ref={canvasHost} className="contents" />
+        {noticeLayer}
       </div>
 
       {deviceClipboard !== null && (
