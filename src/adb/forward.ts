@@ -54,7 +54,7 @@ export const forwardAdbSocket = async (
   adb: Adb,
   service: string
 ): Promise<void> => {
-  const socket = await adb.createSocket(service)
+  const socket = await openSocket(adb, service)
   const writer = socket.writable.getWriter()
 
   let closed = false
@@ -92,4 +92,28 @@ export const forwardAdbSocket = async (
   } finally {
     shutdown()
   }
+}
+
+/**
+ * 打开一条 ADB socket。
+ *
+ * 多盯一个 disconnected:设备还没回 OKAY 的时候连接就断了的话,这个 OPEN
+ * 永远不会有结果 —— Tango 收拾断开时不会把还在等的 OPEN 拒掉,直接 await
+ * 就是卡死,界面上表现为"画面一直转圈"。所以连接一断就自己抛出去,让调用
+ * 方把 WebSocket 关掉、把原因带给用户。
+ */
+const openSocket = async (adb: Adb, service: string) => {
+  const disconnected = adb.disconnected.then(
+    () => {
+      throw new Error("adb 连接断了")
+    },
+    (error: unknown) => {
+      throw error
+    }
+  )
+  // createSocket 先赢的话,这个拒绝就没人接了 —— 自己咽掉,别让它变成
+  // unhandled rejection(在 Node 上那是要崩进程的)。
+  void disconnected.catch(() => {})
+
+  return await Promise.race([adb.createSocket(service), disconnected])
 }

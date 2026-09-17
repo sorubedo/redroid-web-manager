@@ -2,7 +2,11 @@ import type Docker from "dockerode"
 import { Adb, adbDaemonAuthenticate } from "@yume-chan/adb"
 import { findRedroidAdbPort } from "../containers.js"
 import type { DockerEndpoint } from "../docker-host.js"
-import { connectAdbDaemon, type AdbTcpTarget } from "./connection.js"
+import {
+  AdbConnectFailed,
+  connectAdbDaemon,
+  type AdbTcpTarget,
+} from "./connection.js"
 import { createCredentialManager } from "./credentials.js"
 
 /**
@@ -177,16 +181,18 @@ export class AdbSessions {
   }
 
   #close(entry: Entry): void {
-    if (entry.adb !== null) {
-      void Promise.resolve(entry.adb.close()).catch(() => {})
-      return
-    }
-
-    // 还在连:等它连上再关。连不上就算了 —— 本来就没东西要关。
-    void entry.connecting.then(
-      (adb) => adb.close(),
-      () => {}
-    )
+    // 连接可能还在建立中(entry.adb 还是 null),所以统一等 connecting。
+    // 收尾出什么错都咽掉:这条连接已经没用了,而且这里没人接的 Promise
+    // 拒绝会把整个进程带走 —— 为此专门写成 IIFE 里的 try/catch,保证
+    // 返回的 Promise 不会 reject。
+    void (async () => {
+      try {
+        const adb = await entry.connecting
+        await adb.close()
+      } catch {
+        // 连都没连上:本来就没东西要关。
+      }
+    })()
   }
 
   /**
@@ -217,15 +223,23 @@ export class AdbSessions {
     const target: AdbTcpTarget = { host: this.#hostFor(bindAddress), port }
     const connection = await connectAdbDaemon(target)
 
-    const transport = await adbDaemonAuthenticate({
-      // 这个名字只用来给人看(出错时的提示、以后界面上显示),Google 的 adb
-      // 对 TCP 设备用的也是这个格式。
-      serial: `${target.host}:${target.port}`,
-      connection,
-      credentialManager: createCredentialManager(),
-    })
+    try {
+      const transport = await adbDaemonAuthenticate({
+        // 这个名字只用来给人看(出错时的提示、以后界面上显示),Google 的 adb
+        // 对 TCP 设备用的也是这个格式。
+        serial: `${target.host}:${target.port}`,
+        connection,
+        credentialManager: createCredentialManager(),
+      })
 
-    return new Adb(transport)
+      return new Adb(transport)
+    } catch (error) {
+      // 端口连上了,但握手没走完 —— adbd 还没起来(容器刚重启)或者半路
+      // 断了都会这样。这条 TCP 得收掉:留着的话它会一直挂着,而且下次
+      // 借连接时拿到的是它。报错按"连不上"这一类走,界面上会提示等一等。
+      connection.close()
+      throw new AdbConnectFailed(target, error, "handshake")
+    }
   }
 
   /**
