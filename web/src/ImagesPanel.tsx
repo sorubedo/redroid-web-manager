@@ -247,7 +247,6 @@ export const ImagesPanel = () => {
               <InlineCommand
                 command={`adb connect localhost:${created.adbPort}`}
               />
-              <span>切到「容器」那一页就能管它了。</span>
             </p>
           </div>
           <IconButton
@@ -278,12 +277,8 @@ export const ImagesPanel = () => {
           icon={<Layers className="size-5" />}
           title="没有找到能用的 redroid 镜像"
         >
-          <p>下面「官方镜像」里挑一张点「拉取」就行。要在命令行里拉也可以:</p>
+          <p>下面「官方镜像」里点「拉取」,或者手动拉:</p>
           <CommandBlock command="docker pull redroid/redroid:16.0.0_64only-latest" />
-          <p className="text-xs text-faint">
-            标签是 <code>&lt;Android 版本&gt;[_64only]-latest</code>,
-            <code>_64only</code> 表示只有 64 位运行库的精简版。
-          </p>
         </EmptyState>
       )}
 

@@ -128,7 +128,6 @@ export const ComposePanel = () => {
     <>
       <PageHeader
         title="合成台"
-        description="拿一张原版镜像做底,叠上 tar 包,产出一张新镜像"
         busy={images.busy}
         onRefresh={images.reload}
       />
@@ -144,9 +143,9 @@ export const ComposePanel = () => {
         images.data.length === 0 && (
           <EmptyState
             icon={<Layers className="size-5" />}
-          title="本机没有原版 redroid 镜像,没得选"
+          title="本机没有原版 redroid 镜像"
         >
-          <p>先去「镜像」那一页的「官方镜像」里点一下「拉取」,或者手动拉:</p>
+          <p>先去「镜像」页点「拉取」,或者手动拉:</p>
           <CommandBlock command="docker pull redroid/redroid:16.0.0_64only-latest" />
         </EmptyState>
       )}
@@ -182,7 +181,7 @@ export const ComposePanel = () => {
             <Field
               label="输出标签"
               htmlFor="compose-target"
-              hint="合成出来的镜像叫什么。名字里不能有空格和换行。"
+              hint="不能有空格和换行。"
             >
               <input
                 id="compose-target"
@@ -194,7 +193,7 @@ export const ComposePanel = () => {
 
             <div>
               <span className="mb-1.5 block text-sm font-medium">
-                层(tar 包,可以选多个)
+                层(tar 包)
               </span>
               <label
                 onDragOver={(event) => {
@@ -225,12 +224,7 @@ export const ComposePanel = () => {
                   }}
                 />
                 <Upload className="size-5 text-faint" />
-                <span className="text-sm">把 tar 拖进来,或者点这里挑文件</span>
-                <span className="text-xs text-faint">
-                  按挑中的顺序一层层叠上去,tar 会解到镜像根目录
-                  (就是 Dockerfile 里 ADD 那个行为)。可以分几次挑,
-                  后来的接在列表末尾。
-                </span>
+                <span className="text-sm">拖入 tar,或点这里挑文件</span>
               </label>
 
               {files.length > 0 && (
@@ -274,9 +268,6 @@ export const ComposePanel = () => {
                 <CheckCircle className="mt-0.5 size-4 shrink-0 text-ok" />
                 <div className="min-w-0 text-sm">
                   <p className="font-medium">合成完成:{result}</p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    回「镜像」那一页就能拿它创建容器了。
-                  </p>
                 </div>
               </div>
             )}
@@ -290,11 +281,6 @@ export const ComposePanel = () => {
                 {busy && <Spinner className="size-4 animate-spin" />}
                 {busy ? "合成中…" : "开始合成"}
               </Button>
-              <span className="text-[11px] text-faint">
-                {files.length === 0
-                  ? "挑好 tar 包才能开始"
-                  : `准备叠 ${files.length} 层`}
-              </span>
             </div>
           </div>
 
@@ -311,9 +297,7 @@ export const ComposePanel = () => {
               className="scroll-slim h-96 overflow-y-auto bg-panel-2/40 px-4 py-3 font-mono text-[11.5px] leading-relaxed"
             >
               {lines.length === 0 ? (
-                <p className="text-faint">
-                  {busy ? "等后端传回第一行……" : "开始合成之后,Docker 那边说的话会一行行出现在这里。"}
-                </p>
+                busy && <p className="text-faint">等 Docker 回话…</p>
               ) : (
                 lines.map((line, index) => (
                   <p

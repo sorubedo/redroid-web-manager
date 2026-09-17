@@ -601,7 +601,7 @@ export const ContainersPanel = ({
           icon={<Box className="size-5" />}
           title="还没有 redroid 容器"
         >
-          <p>去「镜像」那一页挑一张镜像点「创建容器」,或者手动起一台:</p>
+          <p>去「镜像」页点「创建容器」,或者手动起一台:</p>
           <CommandBlock command="docker run -itd --privileged -p 5555:5555 redroid/redroid:12.0.0_64only-latest" />
         </EmptyState>
       )}

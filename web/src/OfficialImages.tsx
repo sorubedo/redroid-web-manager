@@ -218,13 +218,10 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base font-semibold tracking-tight">官方镜像</h3>
-          <p className="mt-0.5 text-sm text-muted">
-            Docker Hub 上 redroid/redroid 的官方标签。拉一张到本机,就能拿它起容器。
-          </p>
           {age !== null && (
             <p className="mt-1 text-xs text-faint">
-              列表更新于 {age}
-              {cached && " · 来自缓存,点「刷新」拉最新的"}
+              更新于 {age}
+              {cached && " · 缓存"}
             </p>
           )}
         </div>
@@ -237,9 +234,7 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
       {pulled !== null && (
         <div className="animate-rise mb-3 flex items-start gap-3 rounded-xl border border-ok/30 bg-ok-soft px-4 py-3">
           <CheckCircle className="mt-0.5 size-4 shrink-0 text-ok" />
-          <p className="min-w-0 flex-1 text-sm">
-            已拉取 {pulled},现在可以拿它创建容器了。
-          </p>
+          <p className="min-w-0 flex-1 text-sm">已拉取 {pulled}。</p>
           <IconButton onClick={() => setPulled(null)} aria-label="关掉这条提示">
             <X className="size-4" />
           </IconButton>
@@ -250,8 +245,7 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
         <div className="animate-rise mb-3 flex items-start gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3">
           <Alert className="mt-0.5 size-4 shrink-0 text-warn" />
           <p className="min-w-0 flex-1 text-sm">
-            Docker Hub 现在连不上,下面显示的是
-            {age === null ? "上次" : age}缓存的列表。点「刷新」再试一次。
+            Docker Hub 连不上,这是{age ?? "上次"}的缓存。
           </p>
         </div>
       )}

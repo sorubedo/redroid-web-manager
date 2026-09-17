@@ -9,7 +9,7 @@ import {
   type RedroidImage,
   type RedroidParameter,
 } from "./api"
-import { Sliders, Spinner, X } from "./icons"
+import { Spinner, X } from "./icons"
 import { Select, type SelectOption } from "./Select"
 import {
   Button,
@@ -24,7 +24,7 @@ import {
 } from "./ui"
 
 const RESTART_POLICIES: ReadonlyArray<SelectOption<string>> = [
-  { value: "no", label: "不自动重启", hint: "推荐:容器当一次性的用,数据放卷里" },
+  { value: "no", label: "不自动重启" },
   { value: "on-failure", label: "失败退出时重启" },
   { value: "unless-stopped", label: "除非手动停止,否则重启" },
   { value: "always", label: "总是重启" },
@@ -134,12 +134,9 @@ const dataHint = (draft: Draft): { readonly text: string; readonly warn: boolean
     }
   }
   if (draft.dataMode === "bind") {
-    return {
-      text: "宿主上的绝对路径,目录不存在 Docker 会自己建。",
-      warn: false,
-    }
+    return { text: "", warn: false }
   }
-  return { text: "交给 Docker 管的卷,名字随便取,不存在会自动创建。", warn: false }
+  return { text: "", warn: false }
 }
 
 // 参数名里有小数点(androidboot.redroid_width),直接当 id 用的话
@@ -269,11 +266,7 @@ export const CreateContainerForm = ({
               label="adb 端口"
               htmlFor="adb-port"
               tone={portBad ? "warn" : "muted"}
-              hint={
-                portBad
-                  ? "端口得是数字。"
-                  : "宿主机上映射到容器里 5555 的端口。留空的话,程序会从 5555 往上尝试找第一个没被别的容器占的 —— 建议自己填一个。"
-              }
+              hint={portBad ? "端口得是数字。" : undefined}
             >
               <input
                 id="adb-port"
@@ -296,36 +289,21 @@ export const CreateContainerForm = ({
                 value={draft.adbBindAddress}
                 onChange={(next) => update({ adbBindAddress: next })}
                 options={[
-                  {
-                    value: "127.0.0.1",
-                    label: "仅本机",
-                    hint: "推荐,外面连不上",
-                  },
-                  {
-                    value: "0.0.0.0",
-                    label: "所有网卡",
-                    hint: "同网络的机器都能连",
-                  },
+                  { value: "127.0.0.1", label: "仅本机" },
+                  { value: "0.0.0.0", label: "所有网卡" },
                 ]}
               />
-              <p
-                className={`mt-1.5 text-xs ${
-                  draft.adbBindAddress === "0.0.0.0"
-                    ? "text-warn"
-                    : "text-faint"
-                }`}
-              >
-                {draft.adbBindAddress === "0.0.0.0"
-                  ? "adb 没有鉴权,连上就是 Android 里的 root。只在确实要远程连、而且前面还有别的防护时这么开。"
-                  : "端口只绑在宿主本机,远程连不了 —— 要远程用 adb 的话,走 SSH 隧道比直接开出去安全。"}
-              </p>
+              {draft.adbBindAddress === "0.0.0.0" && (
+                <p className="mt-1.5 text-xs text-warn">
+                  adb 没有鉴权,连上就是 Android 里的 root。
+                </p>
+              )}
             </div>
 
             <Switch
               checked={draft.autoRemove}
               onChange={(next) => update({ autoRemove: next })}
               label="停止时自动删除容器(--rm)"
-              description="redroid 官方文档就是这么用的:数据放在 /data 卷里,容器本身当一次性的。"
             />
 
             {!draft.autoRemove && (
@@ -340,10 +318,7 @@ export const CreateContainerForm = ({
             )}
           </Section>
 
-          <Section
-            title="数据持久化"
-            description="Android 里的一切都在容器的 /data 下,想让数据活得比容器久就挂出来。"
-          >
+          <Section title="数据持久化">
             <SegmentedGroup
               value={draft.dataMode}
               onChange={(next) => update({ dataMode: next })}
@@ -362,17 +337,14 @@ export const CreateContainerForm = ({
                 className={`${controlClass} font-mono text-[13px]`}
               />
             )}
-            <p
-              className={`text-xs ${hint.warn ? "text-warn" : "text-faint"}`}
-            >
-              {hint.text}
-            </p>
+            {hint.text !== "" && (
+              <p className={`text-xs ${hint.warn ? "text-warn" : "text-faint"}`}>
+                {hint.text}
+              </p>
+            )}
           </Section>
 
-          <Section
-            title="redroid 参数"
-            description="不填就用 Android 自己的默认值。表是从官方文档抄来的,列在下面的是常用参数。"
-          >
+          <Section title="redroid 参数">
             <div className="flex items-center gap-2">
               <input
                 value={filter}
@@ -447,22 +419,15 @@ export const CreateContainerForm = ({
             </div>
 
             {shown.length === 0 && (
-              <p className="text-xs text-faint">
-                没有匹配「{filter}」的参数,可以直接写在下边的「额外参数」里。
-              </p>
+              <p className="text-xs text-faint">没有匹配的参数。</p>
             )}
           </Section>
 
-          <Section
-            title="额外参数"
-            description="上面没列出来的写在这儿,和上面重名的以这里为准。"
-          >
+          <Section title="额外参数">
             <textarea
               rows={4}
               value={draft.extra}
-              placeholder={
-                "一行一个 key=value,比如:\nandroidboot.redroid_net_dns1=8.8.8.8\nro.secure=0"
-              }
+              placeholder="一行一个 key=value"
               onChange={(event) => update({ extra: event.target.value })}
               className={`${controlClass} font-mono`}
             />
@@ -477,10 +442,6 @@ export const CreateContainerForm = ({
         </div>
 
         <footer className="flex items-center gap-2 border-t border-line bg-panel px-5 py-4 sm:px-6">
-          <span className="mr-auto hidden text-[11px] text-faint sm:block">
-            <Sliders className="mr-1 inline size-3.5 align-[-2px]" />
-            创建好会自动启动,起来之后端口就能连了
-          </span>
           <Button onClick={onCancel} disabled={busy}>
             取消
           </Button>

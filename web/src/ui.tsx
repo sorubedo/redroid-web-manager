@@ -225,7 +225,7 @@ export const PageHeader = ({
   children,
 }: {
   readonly title: string
-  readonly description: string
+  readonly description?: string
   readonly busy?: boolean
   readonly onRefresh: () => void
   readonly children?: ReactNode
@@ -233,7 +233,9 @@ export const PageHeader = ({
   <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
     <div className="min-w-0">
       <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      <p className="mt-0.5 text-sm text-muted">{description}</p>
+      {description !== undefined && description !== "" && (
+        <p className="mt-0.5 text-sm text-muted">{description}</p>
+      )}
     </div>
     <div className="flex items-center gap-2">
       {children}
@@ -356,7 +358,7 @@ export const Switch = ({
   readonly checked: boolean
   readonly onChange: (next: boolean) => void
   readonly label: string
-  readonly description: string
+  readonly description?: string
 }) => (
   <button
     type="button"
@@ -372,7 +374,9 @@ export const Switch = ({
   >
     <span className="min-w-0 flex-1">
       <span className="block text-sm font-medium">{label}</span>
-      <span className="mt-0.5 block text-xs text-faint">{description}</span>
+      {description !== undefined && (
+        <span className="mt-0.5 block text-xs text-faint">{description}</span>
+      )}
     </span>
     <span
       className={cx(

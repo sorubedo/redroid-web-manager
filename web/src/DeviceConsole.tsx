@@ -206,7 +206,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
       // 读不到通常是因为页面不在安全上下文里(局域网 http)。这条路没有别的
       // 办法,只能让用户手动贴一次。
       text = window.prompt(
-        "这个页面读不到本机剪贴板(需要 HTTPS 或 localhost)。把要发送到设备的文字贴到下面:"
+        "读不到剪贴板(需要 HTTPS 或 localhost),把文字贴到下面:"
       )
     }
     if (text === null || text === "") return
@@ -481,7 +481,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     screen.rotate()
     // 转不转是前台应用说了算:锁竖屏的界面不会动。先说清楚,免得用户
     // 以为按钮坏了。
-    setHint("已请设备旋转。锁竖屏的应用(桌面)不会跟着转,相册这类会。")
+    setHint("已请设备旋转。")
   }
 
   const run = async () => {
@@ -712,9 +712,9 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         <section className="shrink-0 border-t border-line bg-panel">
           <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
             <Terminal className="size-3.5 text-faint" />
-            <span className="text-[11px] text-faint">
-              命令(在容器里的 Android 上执行)
-            </span>
+          <span className="text-[11px] text-faint">
+              命令
+          </span>
             <IconButton
               onClick={() => setShowShell(false)}
               title="收起命令"
@@ -809,7 +809,7 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
               ? muted
                 ? "打开声音"
                 : "静音"
-              : "这台上没有声音(浏览器不支持,或者设备那边起不来)"
+              : "这台设备没有声音"
           }
           disabled={screen?.hasSound !== true}
           onClick={() => setMuted((current) => !current)}
@@ -817,14 +817,14 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         <ConsoleKey
           icon={<Rotate className="size-5" />}
           label="旋转"
-          title="请设备转 90°(当前界面锁竖屏的话不会跟着转)"
+          title="请设备转 90°"
           disabled={screen === null}
           onClick={rotate}
         />
         <ConsoleKey
           icon={<Copy className="size-5" />}
           label="粘贴"
-          title="把本机剪贴板粘贴到设备(也可以直接按 Ctrl/Cmd+V)"
+          title="粘贴本机剪贴板(Ctrl/Cmd+V)"
           disabled={screen === null}
           onClick={() => void pasteToDevice()}
         />
