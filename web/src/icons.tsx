@@ -233,6 +233,15 @@ export const Sliders = (props: IconProps) => (
   </Svg>
 )
 
+/** 更多操作。三个点。 */
+export const MoreHorizontal = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
 export const Spinner = ({ className = "size-4" }: IconProps) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
     <circle
