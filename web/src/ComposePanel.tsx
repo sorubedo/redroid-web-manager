@@ -30,6 +30,10 @@ const suggestTarget = (reference: string): string => `${reference}-custom`
 const looksLikeError = (line: string): boolean =>
   /error|failed|失败|not found|denied/i.test(line)
 
+/** 同一个文件认出来的样子:同名、同大小、同修改时间就当成同一份。 */
+const fileKey = (file: File): string =>
+  `${file.name}:${file.size}:${file.lastModified}`
+
 export const ComposePanel = () => {
   const images = useRemote<ReadonlyArray<RedroidImage>>(fetchBaseImages)
 
@@ -58,9 +62,18 @@ export const ComposePanel = () => {
     setTarget(suggestTarget(reference))
   }
 
+  /**
+   * 挑好的 tar 往列表末尾加,而不是换掉 —— 一次挑一个文件是常态,
+   * 换掉的话下一次就把上一次挤没了。同一个文件再挑一遍不算数:
+   * 层是按顺序叠的,同一份叠两遍基本是挑重了。
+   */
   const pickFiles = (picked: ReadonlyArray<File>) => {
     if (picked.length === 0) return
-    setFiles(picked)
+    setFiles((current) => {
+      const known = new Set(current.map(fileKey))
+      const added = picked.filter((file) => !known.has(fileKey(file)))
+      return added.length === 0 ? current : [...current, ...added]
+    })
     setResult(null)
   }
 
@@ -205,13 +218,18 @@ export const ComposePanel = () => {
                   multiple
                   accept=".tar,application/x-tar"
                   className="hidden"
-                  onChange={(event) => pickFiles(Array.from(event.target.files ?? []))}
+                  onChange={(event) => {
+                    pickFiles(Array.from(event.target.files ?? []))
+                    // 不清空的话,再挑同一个文件浏览器不会再报一次 change。
+                    event.target.value = ""
+                  }}
                 />
                 <Upload className="size-5 text-faint" />
                 <span className="text-sm">把 tar 拖进来,或者点这里挑文件</span>
                 <span className="text-xs text-faint">
                   按挑中的顺序一层层叠上去,tar 会解到镜像根目录
-                  (就是 Dockerfile 里 ADD 那个行为)
+                  (就是 Dockerfile 里 ADD 那个行为)。可以分几次挑,
+                  后来的接在列表末尾。
                 </span>
               </label>
 
