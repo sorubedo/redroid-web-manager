@@ -8,6 +8,12 @@ import {
   ScrcpyScreen,
   type ScreenSize,
 } from "./adb/scrcpy"
+import {
+  DEFAULT_VIDEO_SETTINGS,
+  sameVideoSettings,
+  videoSettingsSummary,
+  type VideoSettings,
+} from "./adb/video-settings"
 import { ApiFailure, type RedroidContainer } from "./api"
 import {
   Alert,
@@ -20,6 +26,7 @@ import {
   Refresh,
   Rotate,
   Screen,
+  Sliders,
   Spinner,
   Terminal,
   Upload,
@@ -29,6 +36,7 @@ import {
 } from "./icons"
 import { Badge, Button, controlClass, copyText, cx, IconButton } from "./ui"
 import { useApkInstall } from "./useApkInstall"
+import { VideoSettingsPanel } from "./VideoSettingsPanel"
 
 /**
  * 控制台:整页接管,画面占满剩下的地方。
@@ -98,6 +106,10 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   const [screenGone, setScreenGone] = useState(false)
   // 点「重来一次」时加一,上面的 effect 会重跑一遍。
   const [attempt, setAttempt] = useState(0)
+  // 视频设置:从容器列表点进来时就是这一份默认值(自动编码器、原生分辨率、
+  // 不限帧、24 Mbps),在这个界面里改只影响这次看屏幕,退出再进又是默认。
+  const [settings, setSettings] = useState<VideoSettings>(DEFAULT_VIDEO_SETTINGS)
+  const [showVideoSettings, setShowVideoSettings] = useState(false)
 
   const [showShell, setShowShell] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -128,17 +140,14 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     onDone: setHint,
   })
 
+  // 连容器这段只在换容器时跑一次。视频设置改一下就要重起 scrcpy 的服务端,
+  // 但没道理把这条 adb 连接也跟着拆了重连 —— 所以和下面那条分开。
   useEffect(() => {
     let cancelled = false
     let opened: Adb | null = null
-    let started: ScrcpyScreen | null = null
 
-    setFailure(null)
-    setScreen(null)
-    setScreenSize(null)
-    setScreenGone(false)
-    setDeviceClipboard(null)
     setFacts(null)
+    setAdb(null)
 
     void (async () => {
       try {
@@ -158,8 +167,36 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           connected.getProp("ro.product.cpu.abi"),
         ])
         if (!cancelled) setFacts({ android, abi })
+      } catch (error) {
+        if (!cancelled) setFailure(toFailure(error))
+      }
+    })()
 
-        const session = await ScrcpyScreen.start(connected)
+    return () => {
+      cancelled = true
+      opened?.close()
+    }
+  }, [container.name])
+
+  /**
+   * 起画面。settings 换一份(点了「应用并重连」)就整条重来:关掉旧会话,
+   * 拿新参数重新推 jar、拉服务端、连视频流。
+   */
+  useEffect(() => {
+    if (adb === null) return
+
+    let cancelled = false
+    let started: ScrcpyScreen | null = null
+
+    setFailure(null)
+    setScreen(null)
+    setScreenSize(null)
+    setScreenGone(false)
+    setDeviceClipboard(null)
+
+    void (async () => {
+      try {
+        const session = await ScrcpyScreen.start(adb, settings)
         if (cancelled) {
           await session.close()
           return
@@ -176,10 +213,11 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
 
     return () => {
       cancelled = true
-      void started?.close()
-      opened?.close()
+      // 关会话可能撞上"容器已经关了"这类事,别让它在控制台里冒成一条
+      // 没人接的报错 —— 上面关 adb 连接的那段可能已经先跑了。
+      void started?.close().catch(() => {})
     }
-  }, [container.name, attempt])
+  }, [adb, attempt, settings])
 
   // 声音跟着按钮走。会话是新起的(重来一次)时也按当前这个状态来。
   useEffect(() => {
@@ -494,6 +532,18 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
     setHint("已请设备旋转。")
   }
 
+  /**
+   * 换成新的视频参数。
+   *
+   * 只是把这份设置存下来 —— 上面那个 effect 看见 settings 变了会自己把
+   * 旧会话关掉、按新参数重开一条,所以"应用"之后画面会黑一下再回来。
+   */
+  const applyVideoSettings = (next: VideoSettings) => {
+    setShowVideoSettings(false)
+    setSettings(next)
+    setHint("已按新配置重连。")
+  }
+
   const run = async () => {
     if (adb === null || running || command.trim() === "") return
     setRunning(true)
@@ -553,6 +603,18 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           <Refresh className="size-3.5" />
           重来一次
         </Button>
+        {/* 起不来也有可能是刚才在视频设置里挑了个设备不认的编码器;留一条
+            回默认的路,免得只有"重来一次"能点、一直重来一直错。 */}
+        {!sameVideoSettings(settings, DEFAULT_VIDEO_SETTINGS) && (
+          <Button
+            size="sm"
+            tone="ghost"
+            className="mt-3 ml-2"
+            onClick={() => applyVideoSettings(DEFAULT_VIDEO_SETTINGS)}
+          >
+            回到默认
+          </Button>
+        )}
       </div>
     ) : screenGone ? (
       <div className="pointer-events-auto animate-rise flex max-w-md flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-xl border border-line bg-panel/95 px-4 py-2.5 text-sm text-muted shadow-lg backdrop-blur">
@@ -644,10 +706,18 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         </div>
 
         <IconButton
+          onClick={() => setShowVideoSettings(true)}
+          title={`视频设置 · ${videoSettingsSummary(settings)}`}
+          aria-label="视频设置"
+          className="ml-auto text-fg md:ml-3"
+        >
+          <Sliders className="size-4" />
+        </IconButton>
+        <IconButton
           onClick={() => setShowShell((current) => !current)}
           title={showShell ? "收起命令" : "展开命令"}
           aria-label={showShell ? "收起命令" : "展开命令"}
-          className="ml-auto text-fg md:ml-3"
+          className="text-fg"
         >
           <Terminal className="size-4" />
         </IconButton>
@@ -908,6 +978,16 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
 
       {/* 挑 APK 用的文件框,底下那排「装 APK」就是去点它。 */}
       {apk.input}
+
+      {/* 视频设置。开着的时候画面照放,点「应用并重连」才动会话。 */}
+      {showVideoSettings && (
+        <VideoSettingsPanel
+          settings={settings}
+          adb={adb}
+          onApply={applyVideoSettings}
+          onClose={() => setShowVideoSettings(false)}
+        />
+      )}
     </div>
   )
 }

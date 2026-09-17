@@ -10,6 +10,8 @@ import {
   DefaultServerPath,
   ScrcpyInstanceId,
   ScrcpyPointerId,
+  ScrcpyVideoCodecId,
+  type ScrcpyEncoder,
 } from "@yume-chan/scrcpy"
 import {
   BitmapVideoFrameRenderer,
@@ -19,6 +21,13 @@ import {
 } from "@yume-chan/scrcpy-decoder-webcodecs"
 import { ApiFailure } from "../api"
 import { ScrcpySound, discard } from "./audio"
+import {
+  codecLabel,
+  DEFAULT_VIDEO_SETTINGS,
+  isVideoCodecName,
+  type VideoCodecName,
+  type VideoSettings,
+} from "./video-settings"
 
 // 浏览器里的 scrcpy 客户端。
 //
@@ -30,24 +39,6 @@ import { ScrcpySound, discard } from "./audio"
 // scrcpy 默认走 `adb reverse`(要客户端先在本机监听一个端口),浏览器做不到,
 // Tango 发现 reverse 不被支持会自动改用 forward 隧道 —— 也就是直接连设备上
 // 的 socket,正好是我们要的。
-
-/**
- * 画面最大边长。0 是 scrcpy 的"不限制":服务端按原生分辨率编码,缩放交给
- * 浏览器那边(画面本来就只按 CSS 缩到盒子里,见 DeviceConsole 的 fit)。
- *
- * 缩下去的画面对不上设备的真实分辨率 —— 2560 的屏会被压成 1280,细节补不
- * 回来,界面上显示的那个尺寸也成了假的。这套东西基本只在本机 127.0.0.1
- * 用,省这点像素换不来什么,就别缩了。
- */
-const MAX_SIZE = 0
-
-/**
- * 码率,单位是比特每秒(scrcpy 的参数表就是这个单位)。
- *
- * 这是配原生分辨率定的:2560×1600 的像素数差不多是 1280 长边的四倍,再按
- * 以前那 4 Mbps 编会糊得比缩过的还难看。走回环,码率给高不吃亏。
- */
-const VIDEO_BIT_RATE = 24_000_000
 
 /** 等设备回剪贴板 ack 的上限。不回也不能把调用方挂住。 */
 const CLIPBOARD_ACK_TIMEOUT = 1500
@@ -72,7 +63,10 @@ export class ScrcpyUnsupported extends Error {
  * 到这一步为止都不需要浏览器(解码才需要),所以单独拆出来 —— Node 里也能
  * 直接用它验证并发这类事。
  */
-export const startScrcpySession = async (adb: Adb) => {
+export const startScrcpySession = async (
+  adb: Adb,
+  settings: VideoSettings = DEFAULT_VIDEO_SETTINGS
+) => {
   // scrcpy 用 scid 给 socket 起名(localabstract:scrcpy_xxxxxxxx)。不指定的话
   // 所有会话绑同一个名字,同时打开时后一个会 `Address already in use` 退出,
   // 于是几个页面其实接在同一个 server 上。
@@ -87,9 +81,12 @@ export const startScrcpySession = async (adb: Adb) => {
     // 默认就是 true,写出来是因为剪贴板同步靠它,别顺手关掉。
     clipboardAutosync: true,
     // 4.1 把编码格式做成了必填项(以前有默认值)。
-    videoCodec: "h264",
-    maxSize: MAX_SIZE,
-    videoBitRate: VIDEO_BIT_RATE,
+    videoCodec: settings.codec,
+    // 不指定就让服务端自己挑一个编码器 —— scrcpy 原本的行为。
+    videoEncoder: settings.encoder ?? undefined,
+    maxSize: settings.maxSize,
+    maxFps: settings.maxFps,
+    videoBitRate: settings.videoBitRate,
     scid,
   })
 
@@ -112,20 +109,182 @@ export const startScrcpySession = async (adb: Adb) => {
   return { client, video }
 }
 
+/* --------------------------------------------------------------- 编码器 */
+
+/** scrcpy 报的编码格式(数字 id)对应哪个名字。 */
+const CODEC_NAMES: ReadonlyMap<number, VideoCodecName> = new Map([
+  [ScrcpyVideoCodecId.H264, "h264"],
+  [ScrcpyVideoCodecId.H265, "h265"],
+  [ScrcpyVideoCodecId.Av1, "av1"],
+])
+
+const codecNameOf = (codec: number): VideoCodecName | undefined =>
+  CODEC_NAMES.get(codec)
+
+/**
+ * 探针用的 WebCodecs 配置。
+ *
+ * isConfigSupported 只认完整的 codec string(avc1.42E01E 这种),不认
+ * "h264";里面那些 profile/level 是随便挑的一个最普通的档位 —— 我们是拿它
+ * 问一句"这个格式你解不解得开",不是拿它去解真流(真流的配置由解码器自己
+ * 从 SPS 里读)。
+ */
+const WEBCODECS_PROBES: Record<VideoCodecName, string> = {
+  h264: "avc1.42E01E",
+  h265: "hvc1.1.6.L93.B0",
+  av1: "av01.0.04M.08",
+}
+
+/** 一次探测的结果按格式缓存:同一个浏览器里问一次就够了。 */
+const codecSupport = new Map<VideoCodecName, Promise<boolean>>()
+
+/**
+ * 这台浏览器能不能解这个格式的视频。
+ *
+ * 探测失败一律当"能",让它走到解码器那儿再报错 —— 拦错了比放过去更烦人。
+ * 认不出来的格式也是同一个态度(交给解码器抱怨)。
+ */
+export const canDecodeVideoCodec = (
+  codec: VideoCodecName | number
+): Promise<boolean> => {
+  const name = typeof codec === "number" ? codecNameOf(codec) : codec
+  if (name === undefined) return Promise.resolve(true)
+
+  const cached = codecSupport.get(name)
+  if (cached !== undefined) return cached
+
+  const probe = (async () => {
+    // 没有 WebCodecs 的话连这个是啥都谈不上,ScrcpyScreen.start 那边会先拦。
+    if (typeof VideoDecoder === "undefined") return false
+    try {
+      const support = await VideoDecoder.isConfigSupported({
+        codec: WEBCODECS_PROBES[name],
+        codedWidth: 1280,
+        codedHeight: 720,
+      })
+      return support.supported === true
+    } catch {
+      return false
+    }
+  })()
+
+  codecSupport.set(name, probe)
+  return probe
+}
+
+/**
+ * 设备上有哪些视频编码器(scrcpy 的 --list-encoders)。
+ *
+ * 得把 jar 先推到设备上再跑一遍服务端,几百 KB 的东西走回环很快。同一台
+ * 设备问过一次就记住了 —— 列表是设备属性,不会在页面开着的时候变。
+ *
+ * 只摆出 H.264 / H.265 / AV1 三种:scrcpy 4.1 也认 VP8/VP9,但设备上几乎
+ * 见不到,编出来的画面又糊又费 CPU,列出来只是给人添乱。
+ */
+const encoderCache = new WeakMap<Adb, Promise<readonly ScrcpyEncoder[]>>()
+
+export const listVideoEncoders = (
+  adb: Adb
+): Promise<readonly ScrcpyEncoder[]> => {
+  const cached = encoderCache.get(adb)
+  if (cached !== undefined) return cached
+
+  const pending = readVideoEncoders(adb).catch((error: unknown) => {
+    // 失败不进缓存:下次打开设置还愿意再试一次(设备重启过、刚才在忙之类)。
+    encoderCache.delete(adb)
+    throw error
+  })
+  encoderCache.set(adb, pending)
+  return pending
+}
+
+const readVideoEncoders = async (
+  adb: Adb
+): Promise<readonly ScrcpyEncoder[]> => {
+  // 参数全用默认的:getEncoders 会往这份 options 上打开 --list-encoders,
+  // 服务端打印完列表就自己退,不会真的去开视频/音频 socket。这里的编码格式
+  // 只是 4.1 要求必填,凑个数。
+  const options = new AdbScrcpyOptionsLatest({
+    videoCodec: "h264",
+  })
+  const jar = await fetchServerJar(options.version)
+
+  // 和会话用的 jar 分开一个文件:列表这条路径随时可能和服务端进程的启动/
+  // 退出撞上,别去写人家正在用的那份。
+  const serverPath = DefaultServerPath.replace(/\.jar$/, "-encoders.jar")
+  await AdbScrcpyClient.pushServer(adb, jar, serverPath)
+
+  const encoders = await withTimeout(
+    AdbScrcpyClient.getEncoders(adb, serverPath, options),
+    ENCODER_LIST_TIMEOUT,
+    "问设备要编码器列表等了太久(设备没回话)。"
+  )
+  return encoders.filter(
+    (encoder) =>
+      encoder.type === "video" &&
+      encoder.codec !== undefined &&
+      isVideoCodecName(encoder.codec)
+  )
+}
+
+/** 列编码器最多等多久。超过了就当成"这条路上不去",别把设置面板挂死。 */
+const ENCODER_LIST_TIMEOUT = 15_000
+
+/**
+ * 给一个 promise 加个上限。
+ *
+ * 两边都接住(超时之后再回来也认了),不然超时赢了之后原 promise 的失败会
+ * 变成一条没人接的报错。
+ */
+const withTimeout = <T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string
+): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
+    )
+  })
+
 export class ScrcpyScreen {
   /** 这个浏览器能不能解视频。解不了就别开这个界面了。 */
   static get isSupported(): boolean {
     return WebCodecsVideoDecoder.isSupported
   }
 
-  static async start(adb: Adb): Promise<ScrcpyScreen> {
+  static async start(
+    adb: Adb,
+    settings: VideoSettings = DEFAULT_VIDEO_SETTINGS
+  ): Promise<ScrcpyScreen> {
     if (!WebCodecsVideoDecoder.isSupported) {
       throw new ScrcpyUnsupported(
         "这个浏览器没有 WebCodecs,解不了 scrcpy 的视频流。换 Chrome 或 Edge 试试。"
       )
     }
 
-    const { client, video } = await startScrcpySession(adb)
+    const { client, video } = await startScrcpySession(adb, settings)
+
+    // 服务端起得来不代表这台浏览器解得开:设备上多半每个编码格式都有编码器,
+    // 而浏览器这边 H.265、AV1 都看平台给不给。走到这儿才发现的话是一块黑屏,
+    // 所以宁可在这里拦住,把它变成一句能看懂的话。
+    if (!(await canDecodeVideoCodec(video.metadata.codec))) {
+      await client.close()
+      const name = codecNameOf(video.metadata.codec)
+      throw new ScrcpyUnsupported(
+        `设备用的是 ${
+          name === undefined ? "一种这个浏览器不认识的编码格式" : codecLabel(name)
+        },这台浏览器解不了它。回到视频设置里换一个 H.264 的编码器。`
+      )
+    }
 
     // WebGL 那条路要 GPU,拿不到就退回 2D 画布。两者的接口一样。
     const renderer: CanvasVideoFrameRenderer =
