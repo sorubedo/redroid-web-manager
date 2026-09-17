@@ -21,7 +21,7 @@ import {
   IconButton,
   InlineCommand,
   PageHeader,
-  Skeleton,
+  TableSkeleton,
 } from "./ui"
 import { useRemote } from "./useRemote"
 import type { Failure } from "./useRemote"
@@ -270,7 +270,7 @@ export const ImagesPanel = () => {
         </div>
       )}
 
-      {failure === null && data === null && <Skeleton count={2} />}
+      {failure === null && data === null && <TableSkeleton rows={3} />}
 
       {failure === null && data !== null && count === 0 && (
         <EmptyState

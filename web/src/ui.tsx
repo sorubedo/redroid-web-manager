@@ -295,13 +295,35 @@ export const EmptyState = ({
   </div>
 )
 
-export const Skeleton = ({ count = 3 }: { readonly count?: number }) => (
-  <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+/** 卡片形状的占位,给左右分栏那种页面用。 */
+export const Skeleton = ({ count = 2 }: { readonly count?: number }) => (
+  <div className="grid items-start gap-5 lg:grid-cols-2">
     {Array.from({ length: count }, (_, index) => (
       <div
         key={index}
-        className="h-44 animate-pulse rounded-2xl border border-line bg-panel/60"
+        className="h-64 animate-pulse rounded-2xl border border-line bg-panel/60"
       />
+    ))}
+  </div>
+)
+
+/** 表格形状的占位 —— 镜像那种一行一行的表,加载完不会从卡片跳成表。 */
+export const TableSkeleton = ({ rows = 4 }: { readonly rows?: number }) => (
+  <div className="animate-pulse overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <div className="flex items-center gap-4 bg-panel-2/60 px-4 py-3">
+      <span className="h-2.5 w-14 rounded-full bg-line-strong/60" />
+      <span className="ml-auto h-2.5 w-12 rounded-full bg-line-strong/60" />
+    </div>
+    {Array.from({ length: rows }, (_, index) => (
+      <div
+        key={index}
+        className="flex items-center gap-4 border-t border-line px-4 py-4"
+      >
+        <span className="h-3.5 min-w-0 flex-1 rounded-full bg-line-strong/45" />
+        <span className="hidden h-3.5 w-16 shrink-0 rounded-full bg-line-strong/35 sm:block" />
+        <span className="h-3.5 w-12 shrink-0 rounded-full bg-line-strong/35" />
+        <span className="h-8 w-20 shrink-0 rounded-lg bg-line-strong/40" />
+      </div>
     ))}
   </div>
 )

@@ -8,7 +8,7 @@ import {
   type PullEvent,
 } from "./api"
 import { Alert, CheckCircle, Download, Refresh, Spinner, X } from "./icons"
-import { Badge, Button, cx, FailureBox, IconButton, Skeleton } from "./ui"
+import { Badge, Button, cx, FailureBox, IconButton, TableSkeleton } from "./ui"
 import { useRemote } from "./useRemote"
 
 /**
@@ -255,7 +255,7 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
       )}
 
       {official.failure === null && official.data === null && (
-        <Skeleton count={2} />
+        <TableSkeleton rows={5} />
       )}
 
       {images.length > 0 && (
