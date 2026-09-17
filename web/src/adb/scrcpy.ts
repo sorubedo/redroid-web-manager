@@ -31,11 +31,23 @@ import { ScrcpySound, discard } from "./audio"
 // Tango 发现 reverse 不被支持会自动改用 forward 隧道 —— 也就是直接连设备上
 // 的 socket,正好是我们要的。
 
-/** 画面最大边长。手机上 1080 的原生分辨率推到浏览器上,流量和 CPU 都不划算。 */
-const DEFAULT_MAX_SIZE = 1280
+/**
+ * 画面最大边长。0 是 scrcpy 的"不限制":服务端按原生分辨率编码,缩放交给
+ * 浏览器那边(画面本来就只按 CSS 缩到盒子里,见 DeviceConsole 的 fit)。
+ *
+ * 缩下去的画面对不上设备的真实分辨率 —— 2560 的屏会被压成 1280,细节补不
+ * 回来,界面上显示的那个尺寸也成了假的。这套东西基本只在本机 127.0.0.1
+ * 用,省这点像素换不来什么,就别缩了。
+ */
+const MAX_SIZE = 0
 
-/** 码率,单位是比特每秒(scrcpy 的参数表就是这个单位)。 */
-const VIDEO_BIT_RATE = 4_000_000
+/**
+ * 码率,单位是比特每秒(scrcpy 的参数表就是这个单位)。
+ *
+ * 这是配原生分辨率定的:2560×1600 的像素数差不多是 1280 长边的四倍,再按
+ * 以前那 4 Mbps 编会糊得比缩过的还难看。走回环,码率给高不吃亏。
+ */
+const VIDEO_BIT_RATE = 24_000_000
 
 /** 等设备回剪贴板 ack 的上限。不回也不能把调用方挂住。 */
 const CLIPBOARD_ACK_TIMEOUT = 1500
@@ -76,7 +88,7 @@ export const startScrcpySession = async (adb: Adb) => {
     clipboardAutosync: true,
     // 4.1 把编码格式做成了必填项(以前有默认值)。
     videoCodec: "h264",
-    maxSize: DEFAULT_MAX_SIZE,
+    maxSize: MAX_SIZE,
     videoBitRate: VIDEO_BIT_RATE,
     scid,
   })
