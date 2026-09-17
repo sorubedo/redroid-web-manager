@@ -10,6 +10,7 @@ import {
 } from "./adb/scrcpy"
 import { ApiFailure, type RedroidContainer } from "./api"
 import {
+  Alert,
   Apps,
   ArrowLeft,
   Copy,
@@ -21,11 +22,13 @@ import {
   Screen,
   Spinner,
   Terminal,
+  Upload,
   Volume,
   VolumeOff,
   X,
 } from "./icons"
 import { Badge, Button, controlClass, copyText, cx, IconButton } from "./ui"
+import { useApkInstall } from "./useApkInstall"
 
 /**
  * 控制台:整页接管,画面占满剩下的地方。
@@ -117,6 +120,13 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
   const [command, setCommand] = useState("")
   const [output, setOutput] = useState("")
   const [running, setRunning] = useState(false)
+
+  // 装 APK:这里手上就是连着设备的 adb(看屏幕那条),直接用,不用另连。
+  const apk = useApkInstall({
+    container: container.name,
+    adb,
+    onDone: setHint,
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -665,6 +675,57 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
         {noticeLayer}
       </div>
 
+      {/* 装 APK 的进度 / 结果。推大包要一会儿,占一行比塞在提示里清楚。 */}
+      {(apk.label !== null || apk.failure !== null) && (
+        <div className="flex shrink-0 items-center gap-2.5 border-t border-line bg-panel px-3 py-2">
+          {apk.failure !== null ? (
+            <>
+              <Alert className="size-4 shrink-0 text-danger" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs text-danger">
+                  {apk.failure.message}
+                </span>
+                {apk.failure.hint !== "" && (
+                  <span className="mt-0.5 block text-[11px] text-faint">
+                    {apk.failure.hint}
+                  </span>
+                )}
+              </span>
+              <IconButton
+                onClick={apk.clear}
+                title="收起"
+                aria-label="收起"
+              >
+                <X className="size-3.5" />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              <Upload className="size-4 shrink-0 text-brand" />
+              <span
+                className="min-w-0 flex-1 truncate text-xs text-muted"
+                title={apk.label ?? undefined}
+              >
+                {apk.label}
+              </span>
+              {apk.progress !== null && (
+                <span className="h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-line sm:w-48">
+                  <span
+                    className="block h-full rounded-full bg-brand transition-[width] duration-200"
+                    style={{ width: `${apk.progress * 100}%` }}
+                  />
+                </span>
+              )}
+              {apk.busy && (
+                <Button size="sm" onClick={apk.cancel}>
+                  取消
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {deviceClipboard !== null && (
         <div className="flex shrink-0 items-center gap-2 border-t border-line bg-panel px-3 py-2">
           <span className="shrink-0 text-[11px] text-faint">设备剪贴板</span>
@@ -829,12 +890,24 @@ export const DeviceConsole = ({ container, onClose }: DeviceConsoleProps) => {
           onClick={() => void pasteToDevice()}
         />
         <ConsoleKey
+          icon={<Upload className="size-5" />}
+          label="装 APK"
+          title={
+            adb === null ? "还没连上容器" : "从本机挑一个 APK 装进这台安卓"
+          }
+          disabled={adb === null || apk.busy}
+          onClick={apk.pick}
+        />
+        <ConsoleKey
           icon={<Screen className="size-5" />}
           label="只剩画面"
           disabled={false}
           onClick={enterScreenOnly}
         />
       </footer>
+
+      {/* 挑 APK 用的文件框,底下那排「装 APK」就是去点它。 */}
+      {apk.input}
     </div>
   )
 }

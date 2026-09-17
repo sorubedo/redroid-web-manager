@@ -30,6 +30,7 @@ import {
   Spinner,
   Stop,
   Trash,
+  Upload,
   X,
 } from "./icons"
 import {
@@ -45,6 +46,7 @@ import {
   PageHeader,
 } from "./ui"
 import { useRemote } from "./useRemote"
+import { useApkInstall } from "./useApkInstall"
 
 const restartPolicyLabel = (policy: string): string => {
   if (policy === "no") return "不自动重启"
@@ -114,18 +116,22 @@ const MenuAction = ({
   label,
   danger = false,
   disabled = false,
+  title,
   onClick,
 }: {
   readonly icon: ReactNode
   readonly label: string
   readonly danger?: boolean
   readonly disabled?: boolean
+  /** 灰着不让点的时候,说明一下为什么。 */
+  readonly title?: string
   readonly onClick: () => void
 }) => (
   <MenuItem
     as="button"
     type="button"
     disabled={disabled}
+    title={title}
     onClick={onClick}
     className={cx(
       "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition select-none",
@@ -168,7 +174,6 @@ const ContainerCard = ({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const paramsPanel = useRef<HTMLDivElement>(null)
 
-  const busy = busyLabel !== null
   const running = container.state === "running"
 
   // --rm 的容器,停止就等于删除。这种就不给单独的"删除"了 ——
@@ -218,6 +223,13 @@ const ContainerCard = ({
       flash(ok ? done : "复制失败,请手动选中复制")
     )
   }
+
+  // 装 APK:卡片上没有现成的 adb 连接,所以挑了文件之后才现连一条,装完就关。
+  const apk = useApkInstall({ container: container.name, onDone: flash })
+  const busy = busyLabel !== null || apk.busy
+  // 忙的时候优先说"启动中/停止中"这类操作,其次才是装 APK 的进度。
+  const statusLabel = busyLabel ?? (apk.busy ? apk.label : null)
+  const cardFailure = error ?? apk.failure
 
   const confirmText =
     confirming === "stop"
@@ -340,9 +352,13 @@ const ContainerCard = ({
         <div className="mt-3.5 flex flex-wrap gap-1.5">{flags}</div>
       )}
 
-      {error !== null && (
+      {cardFailure !== null && (
         <div className="mt-3.5">
-          <FailureBox failure={error} />
+          {/* 装 APK 失败时,"重试"就是再挑一次文件 —— 换一份包也走这里。 */}
+          <FailureBox
+            failure={cardFailure}
+            onRetry={error === null ? apk.pick : undefined}
+          />
         </div>
       )}
 
@@ -431,13 +447,24 @@ const ContainerCard = ({
             )}
 
             <div className="ml-auto flex min-w-0 items-center gap-2">
-              {busyLabel !== null && (
+              {statusLabel !== null && (
                 <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-brand">
                   <Spinner className="size-3.5 shrink-0 animate-spin" />
-                  <span className="min-w-0 break-words">{busyLabel}</span>
+                  <span className="min-w-0 break-words">{statusLabel}</span>
+                  {apk.busy && (
+                    <button
+                      type="button"
+                      onClick={apk.cancel}
+                      title="取消安装"
+                      aria-label="取消安装"
+                      className="shrink-0 rounded-md p-0.5 text-faint transition hover:bg-panel-2 hover:text-fg"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
                 </span>
               )}
-              {busyLabel === null && notice !== null && (
+              {statusLabel === null && notice !== null && (
                 <span
                   role="status"
                   className="flex min-w-0 items-center gap-1.5 text-[11px] text-ok"
@@ -477,6 +504,19 @@ const ContainerCard = ({
                     }
                     disabled={container.params.length === 0}
                     onClick={() => setShowParams(true)}
+                  />
+                  <MenuAction
+                    icon={<Upload className="size-4" />}
+                    label="安装 APK"
+                    disabled={!running || container.adbPort === null}
+                    title={
+                      !running
+                        ? "容器没在跑,先启动它"
+                        : container.adbPort === null
+                          ? "这个容器没有映射 adb 端口,连不上它的安卓"
+                          : undefined
+                    }
+                    onClick={apk.pick}
                   />
                   {adbCommand !== null && (
                     <MenuAction
@@ -521,6 +561,9 @@ const ContainerCard = ({
           </>
         )}
       </footer>
+
+      {/* 挑 APK 用的文件框,菜单里点「安装 APK」就是去点它。 */}
+      {apk.input}
     </article>
   )
 }
