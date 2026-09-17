@@ -25,6 +25,22 @@ const HUB_TAGS_URL = `https://hub.docker.com/v2/repositories/${OFFICIAL_REPOSITO
 const HUB_TIMEOUT_MS = 10_000
 
 /**
+ * Hub 的标签列表缓存多久算新鲜。
+ *
+ * 这个列表一天也变不了几次,而每进一次「镜像」页 / 每按一次刷新都会问
+ * 一遍 Hub —— 不缓存的话页面要白等一个来回,还容易撞上限流。10 分钟
+ * 足够让来回切页的人不再打网络,又不至于看到停更太久的东西。
+ */
+const HUB_CACHE_TTL_MS = 10 * 60_000
+
+/** 进程内的那份缓存。重启后端就没了,这没问题 —— 它只是省一次网络往返。 */
+let hubCache: {
+  readonly tags: ReadonlyArray<HubTag>
+  /** 拉回来的时刻(Date.now())。界面上的「更新于」就是它。 */
+  readonly fetchedAt: number
+} | null = null
+
+/**
  * 官方推荐的标签形状:<Android 版本>[_64only]-latest。
  *
  * 仓库里还有一堆带日期戳的固定版本(14.0.0_64only-240527 这种),那是用来
@@ -48,6 +64,17 @@ export interface OfficialImage {
   readonly architectures: ReadonlyArray<string>
   /** Hub 上最后一次推送的时间 */
   readonly updatedAt: string
+}
+
+/** 官方镜像列表,加上"这份数据是什么时候、从哪儿来的"。 */
+export interface OfficialImagesListing {
+  readonly images: ReadonlyArray<OfficialImage>
+  /** 这份列表从 Docker Hub 拉回来的时间(ISO)。命中的是缓存就是上次拉的时间。 */
+  readonly fetchedAt: string
+  /** 这次没打网络,直接给的缓存 */
+  readonly cached: boolean
+  /** Hub 现在连不上,给的是上一次的列表 */
+  readonly stale: boolean
 }
 
 /**
@@ -111,16 +138,30 @@ export type PullProgress =
  */
 export const listOfficialImages = async (
   docker: Docker,
-  endpoint: DockerEndpoint
-): Promise<ReadonlyArray<OfficialImage>> => {
+  endpoint: DockerEndpoint,
+  options: { readonly refresh?: boolean } = {}
+): Promise<OfficialImagesListing> => {
   const version = await request(endpoint, () => docker.version())
   const architecture = normalizeArchitecture(version.Arch ?? "")
-  const tags = await fetchHubTags()
 
-  return tags
-    .map((tag) => toOfficialImage(tag, architecture))
-    .filter((image): image is OfficialImage => image !== null)
-    .sort(compareImages)
+  const cached = hubCache
+  const fresh =
+    cached !== null && Date.now() - cached.fetchedAt < HUB_CACHE_TTL_MS
+  if (cached !== null && fresh && options.refresh !== true) {
+    return listing(cached.tags, architecture, cached.fetchedAt, true, false)
+  }
+
+  try {
+    const tags = await fetchHubTags()
+    hubCache = { tags, fetchedAt: Date.now() }
+    return listing(tags, architecture, hubCache.fetchedAt, false, false)
+  } catch (error) {
+    // Hub 连不上时,上次那份列表比一句报错有用:拉取本来就得等 Hub 恢复,
+    // 但"外面现在有哪些版本"看看旧的一样能决定。第一次就没成功过的,
+    // 还是照原样把错误抛出去。
+    if (cached === null) throw error
+    return listing(cached.tags, architecture, cached.fetchedAt, true, true)
+  }
 }
 
 /**
@@ -144,6 +185,23 @@ export const pullOfficialImage = async (
 }
 
 /* ---------- 内部实现:Docker Hub 那半 ---------- */
+
+/** 把 Hub 的标签整理成界面要的列表,顺带记上这份数据是什么时候拉回来的。 */
+const listing = (
+  tags: ReadonlyArray<HubTag>,
+  architecture: string,
+  fetchedAt: number,
+  cached: boolean,
+  stale: boolean
+): OfficialImagesListing => ({
+  images: tags
+    .map((tag) => toOfficialImage(tag, architecture))
+    .filter((image): image is OfficialImage => image !== null)
+    .sort(compareImages),
+  fetchedAt: new Date(fetchedAt).toISOString(),
+  cached,
+  stale,
+})
 
 /** Hub 上一个标签里我们关心的东西。 */
 interface HubTag {

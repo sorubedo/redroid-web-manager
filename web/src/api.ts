@@ -165,14 +165,37 @@ export const fetchBaseImages = async (): Promise<
 /**
  * Docker Hub 上 redroid 官方仓库的标签列表。后端要出网才拿得到,
  * 拿不到会回一句人话(503),前端照常显示错误框。
+ *
+ * 列表在后端有缓存,`refresh` 是"用户按了刷新"的意思 —— 绕过缓存重拉。
+ * 返回值里带着这份数据是什么时候拉回来的,界面上要显示出来。
  */
-export const fetchOfficialImages = async (): Promise<
-  ReadonlyArray<OfficialImage>
-> => {
-  const body = (await getJson("/api/images/official")) as {
+export const fetchOfficialImages = async (
+  refresh = false
+): Promise<OfficialImagesListing> => {
+  const body = (await getJson(
+    `/api/images/official${refresh ? "?refresh=1" : ""}`
+  )) as {
     images?: ReadonlyArray<OfficialImage>
+    fetchedAt?: string
+    cached?: boolean
+    stale?: boolean
   }
-  return body.images ?? []
+  return {
+    images: body.images ?? [],
+    fetchedAt: body.fetchedAt ?? "",
+    cached: body.cached === true,
+    stale: body.stale === true,
+  }
+}
+
+export interface OfficialImagesListing {
+  readonly images: ReadonlyArray<OfficialImage>
+  /** 这份列表从 Docker Hub 拉回来的时间(ISO) */
+  readonly fetchedAt: string
+  /** 这次没打网络,直接给的缓存 */
+  readonly cached: boolean
+  /** Docker Hub 现在连不上,这是上一次的列表 */
+  readonly stale: boolean
 }
 
 export interface OfficialImage {

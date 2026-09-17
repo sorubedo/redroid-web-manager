@@ -1,13 +1,13 @@
-import { Fragment, useState } from "react"
+import { Fragment, useCallback, useEffect, useRef, useState } from "react"
 import {
   ApiFailure,
   fetchOfficialImages,
   formatSize,
   pullOfficialImage,
-  type OfficialImage,
+  type OfficialImagesListing,
   type PullEvent,
 } from "./api"
-import { CheckCircle, Download, Refresh, Spinner, X } from "./icons"
+import { Alert, CheckCircle, Download, Refresh, Spinner, X } from "./icons"
 import { Badge, Button, cx, FailureBox, IconButton, Skeleton } from "./ui"
 import { useRemote } from "./useRemote"
 
@@ -109,7 +109,32 @@ const formatDay = (iso: string): string => {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
-      })
+        })
+}
+
+/** 「3 分钟前」这种,给「列表更新于……」用。 */
+const ageLabel = (iso: string, now: number): string => {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ""
+  const minutes = Math.floor((now - then) / 60_000)
+  if (minutes < 1) return "刚刚"
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  return new Date(iso).toLocaleString("zh-CN")
+}
+
+/**
+ * 每 30 秒叫一次,好让「更新于 X」跟着时间走 —— 页面开着不动的话,
+ * 时间会一直停在打开那一刻。
+ */
+const useNow = (): number => {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [])
+  return now
 }
 
 interface OfficialImagesProps {
@@ -120,7 +145,16 @@ interface OfficialImagesProps {
 }
 
 export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
-  const official = useRemote<ReadonlyArray<OfficialImage>>(fetchOfficialImages)
+  // 列表在后端有缓存,第一次进页面用它就行;只有用户按「刷新」才绕过去,
+  // 真的去问一次 Docker Hub。
+  const forceRefresh = useRef(false)
+  const load = useCallback(() => fetchOfficialImages(forceRefresh.current), [])
+  const official = useRemote<OfficialImagesListing>(load)
+  const refresh = () => {
+    forceRefresh.current = true
+    official.reload()
+  }
+  const now = useNow()
 
   // 一次只拉一张:同一个 daemon 上并发拉镜像没什么好处,进度也说不清。
   const [pulling, setPulling] = useState<string | null>(null)
@@ -170,7 +204,11 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
     }
   }
 
-  const images = official.data ?? []
+  const images = official.data?.images ?? []
+  const fetchedAt = official.data?.fetchedAt ?? ""
+  const age = fetchedAt === "" ? null : ageLabel(fetchedAt, now)
+  // 缓存命中,而且是能用的数据(不是 Hub 挂了以后的旧货)
+  const cached = official.data?.cached === true && official.data.stale !== true
   const ratio = overallRatio(layers)
   const done = [...layers.values()].filter((layer) => isFinished(layer.status))
     .length
@@ -183,10 +221,16 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
           <p className="mt-0.5 text-sm text-muted">
             Docker Hub 上 redroid/redroid 的官方标签。拉一张到本机,就能拿它起容器。
           </p>
+          {age !== null && (
+            <p className="mt-1 text-xs text-faint">
+              列表更新于 {age}
+              {cached && " · 来自缓存,点「刷新」拉最新的"}
+            </p>
+          )}
         </div>
-        <Button onClick={official.reload} disabled={official.busy}>
+        <Button onClick={refresh} disabled={official.busy}>
           <Refresh className={cx("size-4", official.busy && "animate-spin")} />
-          {official.busy ? "读取中" : "刷新"}
+          {official.busy ? "刷新中" : "刷新"}
         </Button>
       </div>
 
@@ -202,8 +246,18 @@ export const OfficialImages = ({ local, onPulled }: OfficialImagesProps) => {
         </div>
       )}
 
+      {official.data?.stale === true && (
+        <div className="animate-rise mb-3 flex items-start gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3">
+          <Alert className="mt-0.5 size-4 shrink-0 text-warn" />
+          <p className="min-w-0 flex-1 text-sm">
+            Docker Hub 现在连不上,下面显示的是
+            {age === null ? "上次" : age}缓存的列表。点「刷新」再试一次。
+          </p>
+        </div>
+      )}
+
       {official.failure !== null && (
-        <FailureBox failure={official.failure} onRetry={official.reload} />
+        <FailureBox failure={official.failure} onRetry={refresh} />
       )}
 
       {official.failure === null && official.data === null && (

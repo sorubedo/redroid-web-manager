@@ -381,9 +381,16 @@ export const createServer = (options: ServerOptions): FastifyInstance => {
 
   // Docker Hub 上的官方镜像列表。这一步要出网,拿不到就是 503,
   // 和"本机 Docker 读不到"分开报 —— 两件事的对策不一样。
+  //
+  // 列表在后端缓存 10 分钟(见 remote-images.ts),所以来回切页面不会
+  // 每次都打 Hub;?refresh=1 是用户主动按「刷新」,绕过缓存重新拉。
   app.get(
     "/api/images/official",
-    handler(async () => ({ images: await listOfficialImages(docker, endpoint) }))
+    handler(async (request) => {
+      const query = request.query as { refresh?: string }
+      const refresh = query.refresh === "1" || query.refresh === "true"
+      return await listOfficialImages(docker, endpoint, { refresh })
+    })
   )
 
   // 删掉一张镜像(按标签)。还挂着容器的话 Docker 会拦,那是 409 ——
